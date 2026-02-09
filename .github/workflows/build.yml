@@ -43,7 +43,7 @@ jobs:
             libsoup-3.0-dev e2fslibs-dev libext2fs-dev \
             libmount-dev libselinux1-dev \
             gobject-introspection libgirepository1.0-dev \
-            dracut
+            dracut go-md2man
 
       - name: Install Rust
         run: |
