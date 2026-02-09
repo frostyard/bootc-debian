@@ -83,8 +83,13 @@ jobs:
       - name: Package libostree-1-1
         run: |
           ARCH="$(dpkg --print-architecture)"
-          OSTREE_VERSION="$(echo ${OSTREE_TAG} | sed 's/^v//')"
-          PKG_VERSION="${OSTREE_VERSION}-frostyard$(date -u +%Y%m%d%H%M)"
+          RAW_VERSION="$(echo ${OSTREE_TAG} | sed 's/^v//')"
+          TIMESTAMP="$(date -u +%Y%m%d%H%M)"
+          if echo "${RAW_VERSION}" | grep -q '^[0-9]'; then
+            PKG_VERSION="${RAW_VERSION}-frostyard${TIMESTAMP}"
+          else
+            PKG_VERSION="0.0.${TIMESTAMP}.${RAW_VERSION}-frostyard1"
+          fi
           PKG=/build/pkg-libostree
 
           # Use entire make install output as package contents
@@ -115,8 +120,13 @@ jobs:
       - name: Package bootc
         run: |
           ARCH="$(dpkg --print-architecture)"
-          BOOTC_VERSION="$(echo ${BOOTC_TAG} | sed 's/^v//')"
-          PKG_VERSION="${BOOTC_VERSION}-frostyard$(date -u +%Y%m%d%H%M)"
+          RAW_VERSION="$(echo ${BOOTC_TAG} | sed 's/^v//')"
+          TIMESTAMP="$(date -u +%Y%m%d%H%M)"
+          if echo "${RAW_VERSION}" | grep -q '^[0-9]'; then
+            PKG_VERSION="${RAW_VERSION}-frostyard${TIMESTAMP}"
+          else
+            PKG_VERSION="0.0.${TIMESTAMP}.${RAW_VERSION}-frostyard1"
+          fi
           PKG=/build/pkg-bootc
 
           cp -a /build/bootc-install "${PKG}"
