@@ -3,19 +3,15 @@ name: Build
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
-env:
-  OSTREE_TAG: "v2025.6"
-  #BOOTC_TAG: "v1.1.7"
-  BOOTC_TAG: "main"
 
 jobs:
   build:
@@ -25,131 +21,18 @@ jobs:
       image: debian:trixie
     env:
       HOME: "/root"
-      PATH: "/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install build dependencies
-        run: |
-          apt-get update
-          apt-get install --no-install-recommends --yes \
-            build-essential pkg-config autoconf automake libtool bison \
-            git curl ca-certificates dpkg-dev \
-            libcurl4-openssl-dev libssl-dev libsystemd-dev \
-            libgpgme-dev libarchive-dev libfuse3-dev \
-            libglib2.0-dev libzstd-dev liblzma-dev \
-            libsoup-3.0-dev e2fslibs-dev libext2fs-dev \
-            libmount-dev libselinux1-dev \
-            gobject-introspection libgirepository1.0-dev \
-            dracut go-md2man
-
-      - name: Install Rust
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --profile minimal -y
-
-      - name: Clone sources
-        run: |
-          git clone https://github.com/ostreedev/ostree.git --depth 1 -b "${OSTREE_TAG}" /build/ostree
-          cd /build/ostree && git submodule update --init
-          git clone https://github.com/bootc-dev/bootc.git --depth 1 -b "${BOOTC_TAG}" /build/bootc
-
-      - name: Build OSTree
-        run: |
-          MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH)"
-          cd /build/ostree
-          env NOCONFIGURE=1 ./autogen.sh
-          ac_cv_func_open_tree=yes \
-          ./configure \
-            --prefix=/usr \
-            --libdir="/usr/lib/${MULTIARCH}" \
-            --sysconfdir=/etc \
-            --with-curl \
-            --with-dracut
-          make -j"$(nproc)"
-          make install DESTDIR=/build/ostree-install
-          make install DESTDIR=
-          ldconfig
-
-      - name: Build Bootc
-        run: |
-          MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH)"
-          cd /build/bootc
-          export PKG_CONFIG_PATH="/usr/lib/${MULTIARCH}/pkgconfig:/usr/share/pkgconfig"
-          make bin
-          make install-all DESTDIR=/build/bootc-install
-
-      - name: Package libostree-1-1
-        run: |
-          ARCH="$(dpkg --print-architecture)"
-          RAW_VERSION="$(echo ${OSTREE_TAG} | sed 's/^v//')"
-          TIMESTAMP="$(date -u +%Y%m%d%H%M)"
-          if echo "${RAW_VERSION}" | grep -q '^[0-9]'; then
-            PKG_VERSION="${RAW_VERSION}-frostyard${TIMESTAMP}"
-          else
-            PKG_VERSION="0.0.${TIMESTAMP}.${RAW_VERSION}-frostyard1"
-          fi
-          PKG=/build/pkg-libostree
-
-          # Use entire make install output as package contents
-          cp -a /build/ostree-install "${PKG}"
-          # Clean up build artifacts not needed at runtime
-          find "${PKG}" -name '*.la' -delete
-          find "${PKG}" -name '*.a' -delete
-
-          mkdir -p "${PKG}/DEBIAN"
-          cat > "${PKG}/DEBIAN/control" <<EOF
-          Package: libostree-1-1
-          Version: ${PKG_VERSION}
-          Architecture: ${ARCH}
-          Maintainer: Frostyard <packages@frostyard.org>
-          Description: OSTree library and tools (frostyard build)
-           Built from ostree ${OSTREE_TAG} for use with bootc on Debian trixie.
-          Section: libs
-          Priority: optional
-          Depends: libc6, libcurl4t64, libglib2.0-0t64, libgpgme11t64, libarchive13t64, libsystemd0, zlib1g
-          Provides: ostree, libostree-dev
-          Conflicts: libostree-1-1, ostree, libostree-dev
-          Replaces: libostree-1-1, ostree, libostree-dev
-          EOF
-
-          mkdir -p /build/dist
-          dpkg-deb --build "${PKG}" "/build/dist/libostree-1-1_${PKG_VERSION}_${ARCH}.deb"
-
-      - name: Package bootc
-        run: |
-          ARCH="$(dpkg --print-architecture)"
-          RAW_VERSION="$(echo ${BOOTC_TAG} | sed 's/^v//')"
-          TIMESTAMP="$(date -u +%Y%m%d%H%M)"
-          if echo "${RAW_VERSION}" | grep -q '^[0-9]'; then
-            PKG_VERSION="${RAW_VERSION}-frostyard${TIMESTAMP}"
-          else
-            PKG_VERSION="0.0.${TIMESTAMP}.${RAW_VERSION}-frostyard1"
-          fi
-          PKG=/build/pkg-bootc
-
-          cp -a /build/bootc-install "${PKG}"
-
-          mkdir -p "${PKG}/DEBIAN"
-          cat > "${PKG}/DEBIAN/control" <<EOF
-          Package: bootc
-          Version: ${PKG_VERSION}
-          Architecture: ${ARCH}
-          Maintainer: Frostyard <packages@frostyard.org>
-          Description: Boot and upgrade via container images (frostyard build)
-           Built from bootc ${BOOTC_TAG} for Debian trixie.
-          Section: admin
-          Priority: optional
-          Depends: libostree-1-1
-          EOF
-
-          dpkg-deb --build "${PKG}" "/build/dist/bootc_${PKG_VERSION}_${ARCH}.deb"
+      - name: Build ostree and bootc packages
+        run: bash build.sh
 
       - name: Verify packages
         run: |
-          dpkg -i /build/dist/libostree-1-1_*.deb
-          dpkg -i /build/dist/bootc_*.deb
+          dpkg -i dist/libostree-1-1_*.deb
+          dpkg -i dist/bootc_*.deb
           ostree --version
           bootc --help
 
@@ -157,13 +40,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: debian-packages
-          path: /build/dist/*.deb
+          path: dist/*.deb
 
   release:
     name: Publish to repository
     runs-on: ubuntu-latest
     needs: build
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     permissions:
       contents: write
       attestations: write
@@ -197,7 +80,6 @@ jobs:
           base-url: https://repository.frostyard.org
 
       - name: Kickoff snosi build
-        if: github.ref == 'refs/heads/main'
         continue-on-error: true
         uses: peter-evans/repository-dispatch@v4
         with:
