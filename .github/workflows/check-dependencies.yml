@@ -1,0 +1,137 @@
+name: Check Upstream Versions
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'  # Weekly on Monday 8am UTC
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check-updates:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Check for upstream updates
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CHECKSUMS="download/checksums.json"
+          UPDATES=""
+
+          # Authenticated, retried GitHub API fetch. On persistent failure it
+          # yields an empty string (|| true — explicit, so the graceful-skip
+          # behavior doesn't depend on the shell's -e/pipefail settings, and
+          # curl's error stays visible in the log). Every branch below guards
+          # against the empty value: a failed check skips that dependency
+          # instead of proposing a bogus "null" update or aborting the run.
+          gh_api() {
+            curl -fsSL --retry 3 --retry-delay 2 \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$1" || true
+          }
+
+          # Check ostree
+          CURRENT_OSTREE=$(jq -r '.ostree.version' "$CHECKSUMS")
+          LATEST_OSTREE=$(gh_api https://api.github.com/repos/ostreedev/ostree/releases/latest | jq -r '.tag_name' | sed 's/^v//')
+          if [[ -n "$LATEST_OSTREE" && "$LATEST_OSTREE" != "null" && "$LATEST_OSTREE" != "$CURRENT_OSTREE" ]]; then
+            UPDATES="${UPDATES}ostree: $CURRENT_OSTREE -> $LATEST_OSTREE\n"
+            echo "ostree_update=true" >> $GITHUB_OUTPUT
+            echo "ostree_version=$LATEST_OSTREE" >> $GITHUB_OUTPUT
+          fi
+
+          # Check bootc (bootc + bootc-vendor version together)
+          # NOTE: on a bootc bump, also re-check RUST_VERSION in build.sh — a
+          # new bootc release may raise the rustc version needed to BUILD it
+          # (its build deps, not just MSRV).
+          CURRENT_BOOTC=$(jq -r '.bootc.version' "$CHECKSUMS")
+          LATEST_BOOTC=$(gh_api https://api.github.com/repos/bootc-dev/bootc/releases/latest | jq -r '.tag_name' | sed 's/^v//')
+          if [[ -n "$LATEST_BOOTC" && "$LATEST_BOOTC" != "null" && "$LATEST_BOOTC" != "$CURRENT_BOOTC" ]]; then
+            UPDATES="${UPDATES}bootc: $CURRENT_BOOTC -> $LATEST_BOOTC\n"
+            echo "bootc_update=true" >> $GITHUB_OUTPUT
+            echo "bootc_version=$LATEST_BOOTC" >> $GITHUB_OUTPUT
+          fi
+
+          if [[ -n "$UPDATES" ]]; then
+            echo "has_updates=true" >> $GITHUB_OUTPUT
+            echo -e "Updates available:\n$UPDATES"
+          else
+            echo "has_updates=false" >> $GITHUB_OUTPUT
+            echo "All dependencies up to date"
+          fi
+
+      - name: Update checksums
+        if: steps.check.outputs.has_updates == 'true'
+        # Step outputs derive from external release data; passing them through
+        # env (rather than inline ${{ }} interpolation in the script) keeps a
+        # malicious upstream tag from injecting shell commands.
+        env:
+          OSTREE_UPDATE: ${{ steps.check.outputs.ostree_update }}
+          OSTREE_VERSION: ${{ steps.check.outputs.ostree_version }}
+          BOOTC_UPDATE: ${{ steps.check.outputs.bootc_update }}
+          BOOTC_VERSION: ${{ steps.check.outputs.bootc_version }}
+        run: |
+          CHECKSUMS="download/checksums.json"
+
+          if [[ "$OSTREE_UPDATE" == "true" ]]; then
+            VER="$OSTREE_VERSION"
+            URL="https://github.com/ostreedev/ostree/releases/download/v${VER}/libostree-${VER}.tar.xz"
+            TMP=$(mktemp)
+            curl -fsSL -o "$TMP" "$URL"
+            SHA=$(sha256sum "$TMP" | cut -d' ' -f1)
+            jq --arg u "$URL" --arg s "$SHA" --arg v "$VER" \
+              '.ostree.url=$u | .ostree.sha256=$s | .ostree.version=$v' \
+              "$CHECKSUMS" > tmp.json && mv tmp.json "$CHECKSUMS"
+            rm -f "$TMP"
+          fi
+
+          if [[ "$BOOTC_UPDATE" == "true" ]]; then
+            VER="$BOOTC_VERSION"
+            URL="https://github.com/bootc-dev/bootc/releases/download/v${VER}/bootc-${VER}.tar.zstd"
+            VURL="https://github.com/bootc-dev/bootc/releases/download/v${VER}/bootc-${VER}-vendor.tar.zstd"
+            TMP=$(mktemp); VTMP=$(mktemp)
+            curl -fsSL -o "$TMP" "$URL"
+            curl -fsSL -o "$VTMP" "$VURL"
+            SHA=$(sha256sum "$TMP" | cut -d' ' -f1)
+            VSHA=$(sha256sum "$VTMP" | cut -d' ' -f1)
+            jq --arg u "$URL" --arg s "$SHA" --arg v "$VER" \
+               --arg vu "$VURL" --arg vs "$VSHA" \
+              '.bootc.url=$u | .bootc.sha256=$s | .bootc.version=$v
+               | .["bootc-vendor"].url=$vu | .["bootc-vendor"].sha256=$vs | .["bootc-vendor"].version=$v' \
+              "$CHECKSUMS" > tmp.json && mv tmp.json "$CHECKSUMS"
+            rm -f "$TMP" "$VTMP"
+          fi
+
+      - name: Create Pull Request
+        if: steps.check.outputs.has_updates == 'true'
+        uses: peter-evans/create-pull-request@4e1beaa7521e8b457b572c090b25bd3db56bf1c5 # v5
+        with:
+          # GITHUB_TOKEN-created PRs do not trigger workflows (the Build
+          # workflow never runs on them). Set the WORKFLOW_PAT repo secret
+          # (fine-grained PAT or GitHub App token with contents+pull-requests
+          # write) to give auto-update PRs real CI; until then this falls back
+          # to GITHUB_TOKEN and PRs must be checked manually.
+          token: ${{ secrets.WORKFLOW_PAT || secrets.GITHUB_TOKEN }}
+          commit-message: "chore: update ostree/bootc to latest upstream releases"
+          title: "chore: update ostree/bootc to latest upstream releases"
+          body: |
+            Automated update of pinned upstream versions in `download/checksums.json`.
+
+            Merging this PR triggers a build and publishes the updated
+            packages to the frostyard repository.
+
+            **Please verify the build passes before merging.** On a bootc
+            bump, also check whether `RUST_VERSION` in `build.sh` needs a
+            bump (a new bootc release may require a newer rustc to build).
+          branch: auto-update-checksums
+          delete-branch: true
