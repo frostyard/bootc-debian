@@ -113,6 +113,13 @@ cp -a "$OSTREE_INSTALL" "$PKG"
 find "$PKG" -name '*.la' -delete
 find "$PKG" -name '*.a' -delete
 
+# Depends lists below are the COMPLETE runtime link deps, derived from the
+# built binaries: objdump -p <bin> | awk '/NEEDED/' over libostree-1.so.1,
+# the ostree CLI, the libexec helpers (rofiles-fuse links libfuse3), and the
+# bootc binary, with each soname mapped to its trixie package via dpkg -S.
+# Re-derive when bumping upstream versions -- a new ostree/bootc may link
+# more libraries, and consumers (e.g. snosi images) rely on apt pulling in
+# everything the binaries need.
 mkdir -p "$PKG/DEBIAN"
 cat > "$PKG/DEBIAN/control" <<EOF
 Package: libostree-1-1
@@ -123,7 +130,7 @@ Description: OSTree library and tools (frostyard build)
  Built from ostree v${OSTREE_VERSION} for use with bootc on Debian trixie.
 Section: libs
 Priority: optional
-Depends: libc6, libcurl4t64, libglib2.0-0t64, libgpgme11t64, libarchive13t64, libsystemd0, zlib1g
+Depends: libc6, libarchive13t64, libcurl4t64, libfuse3-4, libglib2.0-0t64, libgpg-error0, libgpgme11t64, liblzma5, libselinux1, libsystemd0, zlib1g
 Provides: ostree, libostree-dev
 Conflicts: libostree-1-1, ostree, libostree-dev
 Replaces: libostree-1-1, ostree, libostree-dev
@@ -146,7 +153,7 @@ Description: Boot and upgrade via container images (frostyard build)
  Built from bootc v${BOOTC_VERSION} for Debian trixie.
 Section: admin
 Priority: optional
-Depends: libostree-1-1
+Depends: libostree-1-1, libc6, libgcc-s1, libglib2.0-0t64, libpcre2-8-0, libssl3t64, libzstd1, zlib1g
 EOF
 
 dpkg-deb --build --root-owner-group "$PKG" "$DIST/bootc_${PKG_VERSION}_${ARCH}.deb"
