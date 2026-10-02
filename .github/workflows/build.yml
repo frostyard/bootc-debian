@@ -46,7 +46,10 @@ jobs:
     name: Publish to repository
     runs-on: ubuntu-latest
     needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    # Publishing is manual-only until bootc-debian moves to trixie, which needs
+    # repogen 0.5.x's repogen-version/repogen-commit inputs. The snosi kickoff
+    # only matters after a publish, so it is gated with it.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
     permissions:
       contents: write
       attestations: write
@@ -65,7 +68,7 @@ jobs:
           path: ./dist
 
       - name: Publish to frostyard repo
-        uses: frostyard/repogen/.github/actions/publish-to-r2@main
+        uses: frostyard/repogen/.github/actions/publish-to-r2@5a799b4110ad656e29b004b6e9a0ceb078fcd5d9 # main as of 2026-08-14 (last publish, run 31758124772)
         with:
           r2-account-id: ${{ secrets.R2_ACCOUNT_ID }}
           r2-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
