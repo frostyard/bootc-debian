@@ -19,12 +19,14 @@ both as `.deb`s. This mirrors the in-image build in
 
 Workflows:
 
-- **Build** (`build.yml`) — on push to `main` (and on PRs, build-only):
-  builds the packages, publishes to the frostyard repo, and dispatches a
-  snosi image build.
+- **Build** (`build.yml`) — on push to `main` and on PRs: builds the
+  packages only. Publishing to the frostyard repo and dispatching a snosi
+  image build run only on a manual `workflow_dispatch` on `main`, until
+  bootc-debian moves to trixie.
 - **Check Upstream Versions** (`check-dependencies.yml`) — weekly: checks
   for new ostree/bootc releases and opens a PR updating
-  `download/checksums.json`. Merging that PR triggers a build and publish.
+  `download/checksums.json`. Merging that PR triggers a build; publishing
+  needs a manual dispatch.
 
 ## Building locally
 
