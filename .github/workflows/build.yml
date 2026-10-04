@@ -9,9 +9,13 @@ on:
 permissions:
   contents: read
 
+# A manual run on main releases and requests publication, so it has its own
+# group and is never cancelled: a push to main must not stop it between
+# creating the release and requesting publication. Push and pull request
+# runs still cancel older runs of the same ref.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   build:
@@ -24,7 +28,9 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Build ostree and bootc packages
         run: bash build.sh
@@ -37,55 +43,120 @@ jobs:
           bootc --help
 
       - name: Upload packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: debian-packages
           path: dist/*.deb
 
+  # Only a manual run on main releases. The release's .deb assets are
+  # published by frostyard/apt-publisher, the single Debian writer
+  # (frostyard/core ADR-0055), which then dispatches `build` to
+  # frostyard/snosi once they are installable (ADR-0056).
   release:
-    name: Publish to repository
+    name: Release
+    if: github.repository == 'frostyard/bootc-debian' && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     needs: build
-    # Publishing is manual-only until bootc-debian moves to trixie, which needs
-    # repogen 0.5.x's repogen-version/repogen-commit inputs. The snosi kickoff
-    # only matters after a publish, so it is gated with it.
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    timeout-minutes: 20
     permissions:
-      contents: write
-      attestations: write
-      id-token: write
+      contents: write # create the release and its tag
+      attestations: write # store the build provenance attestations
+      id-token: write # sign the attestations with this workflow's identity
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
+      - name: Download packages
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: debian-packages
           path: ./dist
 
-      - name: Publish to frostyard repo
-        uses: frostyard/repogen/.github/actions/publish-to-r2@5a799b4110ad656e29b004b6e9a0ceb078fcd5d9 # main as of 2026-08-14 (last publish, run 31758124772)
-        with:
-          r2-account-id: ${{ secrets.R2_ACCOUNT_ID }}
-          r2-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
-          r2-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          r2-bucket: frostyardrepo
-          purge-cache: "true"
-          cloudflare-zone: ${{ secrets.CLOUDFLARE_ZONE }}
-          cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          gpg-private-key: ${{ secrets.REPOGEN_GPG_KEY }}
-          packages-dir: ./dist
-          package-type: deb
-          base-url: https://repository.frostyard.org
+      # apt-publisher publishes every .deb in the release, and bootc-debian is
+      # registered for trixie only. The release must therefore hold exactly
+      # this run's Debian 13 amd64 bootc and libostree-1-1, and nothing else.
+      - name: Check the packages
+        id: check
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          want="bootc libostree-1-1"
+          names=() stamp=""
+          declare -A upstream=()
+          for deb in dist/*.deb; do
+            name=$(dpkg-deb -f "$deb" Package)
+            version=$(dpkg-deb -f "$deb" Version)
+            arch=$(dpkg-deb -f "$deb" Architecture)
+            size=$(stat -c %s "$deb")
+            if [[ $arch != amd64 ]]; then
+              echo "::error::$deb is built for $arch, not amd64"
+              exit 1
+            fi
+            if [[ ! $version =~ ^([0-9]+(\.[0-9]+)*)-frostyard([0-9]{12})~deb13$ ]]; then
+              echo "::error::$deb has version $version, which is not a Debian 13 build of this repository"
+              exit 1
+            fi
+            if [[ -n $stamp && ${BASH_REMATCH[3]} != "$stamp" ]]; then
+              echo "::error::$deb was built at ${BASH_REMATCH[3]}, but another package at $stamp"
+              exit 1
+            fi
+            if [[ $(basename "$deb") != "${name}_${version}_${arch}.deb" ]]; then
+              echo "::error::$deb is not named ${name}_${version}_${arch}.deb"
+              exit 1
+            fi
+            if ((size >= 2147483648)); then
+              echo "::error::$deb is $size bytes; GitHub release assets must be under 2 GiB"
+              exit 1
+            fi
+            stamp=${BASH_REMATCH[3]}
+            upstream[$name]=${BASH_REMATCH[1]}
+            names+=("$name")
+          done
+          got=$(printf '%s\n' "${names[@]}" | sort | paste -sd ' ')
+          if [[ $got != "$want" ]]; then
+            echo "::error::expected the packages: $want; found: ${got:-none}"
+            exit 1
+          fi
+          echo "tag=bootc-${upstream[bootc]}-ostree-${upstream[libostree-1-1]}-$stamp" >>"$GITHUB_OUTPUT"
 
-      - name: Kickoff snosi build
-        continue-on-error: true
-        uses: peter-evans/repository-dispatch@v4
+      # Binds each .deb to this workflow run. Verify with
+      # gh attestation verify FILE --repo frostyard/bootc-debian --source-ref refs/heads/main
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          token: ${{ secrets.ORG_PAT }}
-          repository: frostyard/snosi
-          event-type: build
+          subject-path: dist/*.deb
+
+      # gh uploads the assets to a draft and publishes it once all are
+      # attached, so apt-publisher never sees a partial release. An existing
+      # release fails this step instead of being changed. GitHub lists the
+      # assets with `.deb13` in place of `~deb13`; the packages inside keep
+      # their versions.
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.check.outputs.tag }}
+        run: |
+          gh release create "$TAG" dist/*.deb --target "$GITHUB_SHA" --latest \
+            --title "$TAG" \
+            --notes "Debian 13 (trixie) amd64 build of main at $GITHUB_SHA. frostyard/apt-publisher publishes it to https://repository.frostyard.org/debian/ (trixie)."
+
+  # Not continue-on-error: if the request fails, nothing was published and
+  # the run must fail. Re-running this job alone requests the same release
+  # again. The packages carry ~deb13, so apt-publisher routes them to trixie;
+  # naming trixie makes it refuse anything else in the release.
+  request-publication:
+    name: Request APT publication
+    runs-on: ubuntu-latest
+    needs: release
+    timeout-minutes: 5
+    permissions: {}
+
+    steps:
+      - name: Request APT publication
+        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4
+        with:
+          token: ${{ secrets.APT_PUBLISH_TOKEN }}
+          repository: frostyard/apt-publisher
+          event-type: publish-deb
+          client-payload: '{"repo": "${{ github.repository }}", "tag": "${{ needs.release.outputs.tag }}", "codenames": ["trixie"]}'
