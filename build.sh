@@ -27,6 +27,22 @@ RUST_VERSION="1.96.0"
 SRCDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIST="${DIST:-$SRCDIR/dist}"
 
+# Both packages link the build distribution's libraries, so each version
+# names the Debian release it was built for (frostyard/core ADR-0055):
+# frostyard/apt-publisher publishes a ~debNN version only to the codename for
+# Debian NN. ~deb13 sorts below ~deb14, so a later forky build can sit beside
+# this one and an upgrade to forky picks it up. Only trixie is supported: the
+# Depends lists below name trixie's library packages.
+# shellcheck source=/dev/null
+CODENAME="$(. /etc/os-release && echo "${VERSION_CODENAME:-}")"
+case "$CODENAME" in
+    trixie) DEB_MARKER="~deb13" ;;
+    *)
+        echo "Error: build in debian:trixie, not '${CODENAME:-unknown}'" >&2
+        exit 1
+        ;;
+esac
+
 # --- Build dependencies (same set as snosi's BuildPackages=) ---------------
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
@@ -106,7 +122,7 @@ BOOTC_INSTALL="$WORK/bootc-install"
 
 # --- Package libostree-1-1 --------------------------------------------------
 mkdir -p "$DIST"
-PKG_VERSION="${OSTREE_VERSION}-frostyard${TIMESTAMP}"
+PKG_VERSION="${OSTREE_VERSION}-frostyard${TIMESTAMP}${DEB_MARKER}"
 PKG="$WORK/pkg-libostree"
 cp -a "$OSTREE_INSTALL" "$PKG"
 # Clean up build artifacts not needed at runtime
@@ -139,7 +155,7 @@ EOF
 dpkg-deb --build --root-owner-group "$PKG" "$DIST/libostree-1-1_${PKG_VERSION}_${ARCH}.deb"
 
 # --- Package bootc ----------------------------------------------------------
-PKG_VERSION="${BOOTC_VERSION}-frostyard${TIMESTAMP}"
+PKG_VERSION="${BOOTC_VERSION}-frostyard${TIMESTAMP}${DEB_MARKER}"
 PKG="$WORK/pkg-bootc"
 cp -a "$BOOTC_INSTALL" "$PKG"
 
