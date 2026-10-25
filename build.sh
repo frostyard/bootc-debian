@@ -42,6 +42,8 @@ case "$CODENAME" in
 esac
 
 # --- Build dependencies (same set as snosi's BuildPackages=) ---------------
+# libclang-dev: bootc >= 1.17 enables its `selinux` feature by default. The
+# selinux-sys crate runs bindgen at build time, which needs libclang.
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install --no-install-recommends --yes \
@@ -51,7 +53,7 @@ apt-get install --no-install-recommends --yes \
     libgpgme-dev libarchive-dev libfuse3-dev \
     libglib2.0-dev libzstd-dev liblzma-dev \
     libsoup-3.0-dev e2fslibs-dev libext2fs-dev \
-    libmount-dev libselinux1-dev \
+    libmount-dev libselinux1-dev libclang-dev \
     gobject-introspection libgirepository1.0-dev
 
 WORK="$(mktemp -d)"
@@ -167,7 +169,7 @@ Description: Boot and upgrade via container images (frostyard build)
  Built from bootc v${BOOTC_VERSION} for Debian trixie.
 Section: admin
 Priority: optional
-Depends: libostree-1-1, libc6, libgcc-s1, libglib2.0-0t64, libpcre2-8-0, libssl3t64, libzstd1, zlib1g
+Depends: libostree-1-1, libc6, libgcc-s1, libglib2.0-0t64, libpcre2-8-0, libselinux1, libssl3t64, libzstd1, zlib1g
 EOF
 
 dpkg-deb --build --root-owner-group "$PKG" "$DIST/bootc_${PKG_VERSION}_${ARCH}.deb"
