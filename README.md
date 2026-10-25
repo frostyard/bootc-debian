@@ -15,9 +15,10 @@ Upstream versions are pinned in [`download/checksums.json`](download/checksums.j
 (version, release-tarball URL, sha256). [`build.sh`](build.sh) downloads and
 verifies the tarballs, builds ostree, then builds bootc against it (offline,
 using upstream's vendored crates and a pinned Rust toolchain), and packages
-both as `.deb`s. This mirrors the in-image build in
-[frostyard/snosi](https://github.com/frostyard/snosi)
-(`shared/bootc/build/bootc.chroot`) so both build paths stay identical.
+both as `.deb`s. [frostyard/snosi](https://github.com/frostyard/snosi) no
+longer builds bootc itself: its OCI bootc profiles install these `bootc` and
+`libostree-1-1` packages from the frostyard APT repository
+([`shared/packages/bootc/mkosi.conf`](https://github.com/frostyard/snosi/blob/main/shared/packages/bootc/mkosi.conf)).
 
 Versions are `<upstream>-frostyard<UTC minute>~deb13`, for example
 `1.16.8-frostyard202610040130~deb13`. The timestamp makes every rebuild sort

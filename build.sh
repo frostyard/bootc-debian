@@ -2,11 +2,9 @@
 # Build ostree and bootc from pinned, sha256-verified release tarballs and
 # package them as Debian packages for the frostyard repository.
 #
-# This mirrors the in-image build snosi uses (shared/bootc/build/bootc.chroot)
-# so the two build paths stay identical: same tarballs, same checksums, same
-# pinned Rust toolchain, same configure/make invocations. Once these packages
-# are published, snosi can install the .debs instead of compiling from source
-# on every image build.
+# snosi no longer builds bootc in its images. Its OCI bootc profiles install
+# these .debs from the frostyard repository (snosi
+# shared/packages/bootc/mkosi.conf), so this script is the only build path.
 #
 # Runs as root inside a debian:trixie container (CI or local):
 #   docker run --rm -v "$PWD":/src -w /src debian:trixie bash build.sh
