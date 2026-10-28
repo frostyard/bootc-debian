@@ -3,11 +3,30 @@
 Builds Debian (trixie) packages for [ostree](https://github.com/ostreedev/ostree)
 and [bootc](https://github.com/bootc-dev/bootc), released here and published
 to the Frostyard APT repository (`https://repository.frostyard.org/debian/`,
-`trixie`) by [frostyard/apt-publisher](https://github.com/frostyard/apt-publisher).
+`trixie`, component `image`) by [frostyard/apt-publisher](https://github.com/frostyard/apt-publisher).
 It produces:
 
 - `libostree-1-1` — OSTree library and tools
 - `bootc` — boot and upgrade via container images
+
+## The `image` component
+
+`libostree-1-1` replaces Debian's package of the same name, and `bootc` links
+against it, so both are published in the `image` component, not `main`
+([core ADR-0059](https://github.com/frostyard/core/blob/main/docs/adr/0059-publish-image-only-packages-in-a-separate-apt-component.md)).
+Only Frostyard image builds enable `image` (snosi's build sandbox,
+`Components: main image`). A plain Debian host that adds `main` keeps
+Debian's `libostree-1-1` and its security updates.
+
+The component is set by apt-publisher, not here: its `config/producers.tsv`
+registers this repository for `image`, and the `publish-deb` request names
+only the repository, the tag and `trixie`.
+
+Versions published before the move stay installable from `image`:
+apt-publisher's move workflow (ADR-0059 step 5) takes every published
+version out of `main`'s index and into `image`'s, unchanged. Their files under
+`debian/pool/main/` stay in the bucket, because nothing deletes pool files;
+removing them would be a later, separately approved change.
 
 ## How it works
 
@@ -40,8 +59,8 @@ Workflows:
      `bootc-<version>-ostree-<version>-<UTC minute>` with the two `.deb`
      files (GitHub lists them with `.deb13` in place of `~deb13`);
   4. sends a `publish-deb` request to frostyard/apt-publisher. apt-publisher
-     publishes the release to `trixie`, then dispatches a frostyard/snosi
-     image build.
+     publishes the release to `trixie`, component `image`, then dispatches a
+     frostyard/snosi image build.
 - **Check Upstream Versions** (`check-dependencies.yml`) — weekly: checks
   for new ostree/bootc releases and opens a PR updating
   `download/checksums.json`. Merging that PR triggers a build; releasing
