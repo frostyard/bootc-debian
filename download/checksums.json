@@ -1,17 +1,17 @@
 {
   "ostree": {
-    "url": "https://github.com/ostreedev/ostree/releases/download/v2026.5/libostree-2026.5.tar.xz",
-    "sha256": "1829428ed2d982dc684211ff18525b57ea627056a68fa5b04f674f0ca6c9c19b",
-    "version": "2026.5"
+    "url": "https://github.com/ostreedev/ostree/releases/download/v2026.6/libostree-2026.6.tar.xz",
+    "sha256": "164b8226aea6a0e6601036de02a5e3b62307bae25890ed557fb4e19020bd5974",
+    "version": "2026.6"
   },
   "bootc": {
-    "url": "https://github.com/bootc-dev/bootc/releases/download/v1.17.1/bootc-1.17.1.tar.zstd",
-    "sha256": "8d06b7b20e6a3fe862275f089a2ac5275ff91151de2e3f0ef090a426292ab3dd",
-    "version": "1.17.1"
+    "url": "https://github.com/bootc-dev/bootc/releases/download/v1.17.3/bootc-1.17.3.tar.zstd",
+    "sha256": "5841cd9f7d684fb604e1f12112fa6373bd61bb8124f38f410fe007722c474280",
+    "version": "1.17.3"
   },
   "bootc-vendor": {
-    "url": "https://github.com/bootc-dev/bootc/releases/download/v1.17.1/bootc-1.17.1-vendor.tar.zstd",
-    "sha256": "98928c04b146f433aa4ac3821bc356aa98da986909d80eebeb08fb9a5c60be0d",
-    "version": "1.17.1"
+    "url": "https://github.com/bootc-dev/bootc/releases/download/v1.17.3/bootc-1.17.3-vendor.tar.zstd",
+    "sha256": "86539ca4458b6c23614bdcc2aecf1b1104264767268bdfd26b59360520e1217c",
+    "version": "1.17.3"
   }
 }
