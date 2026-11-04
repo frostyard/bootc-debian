@@ -7,12 +7,18 @@ on:
 
 permissions: {}
 
+# The branch of the bot PR. The dispatch job below starts Build on it.
+env:
+  BOT_BRANCH: auto-update-checksums
+
 jobs:
   check-updates:
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
+    outputs:
+      operation: ${{ steps.cpr.outputs.pull-request-operation }}
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -46,8 +52,8 @@ jobs:
           LATEST_OSTREE=$(gh_api https://api.github.com/repos/ostreedev/ostree/releases/latest | jq -r '.tag_name' | sed 's/^v//')
           if [[ -n "$LATEST_OSTREE" && "$LATEST_OSTREE" != "null" && "$LATEST_OSTREE" != "$CURRENT_OSTREE" ]]; then
             UPDATES="${UPDATES}ostree: $CURRENT_OSTREE -> $LATEST_OSTREE\n"
-            echo "ostree_update=true" >> $GITHUB_OUTPUT
-            echo "ostree_version=$LATEST_OSTREE" >> $GITHUB_OUTPUT
+            echo "ostree_update=true" >> "$GITHUB_OUTPUT"
+            echo "ostree_version=$LATEST_OSTREE" >> "$GITHUB_OUTPUT"
           fi
 
           # Check bootc (bootc + bootc-vendor version together)
@@ -58,15 +64,15 @@ jobs:
           LATEST_BOOTC=$(gh_api https://api.github.com/repos/bootc-dev/bootc/releases/latest | jq -r '.tag_name' | sed 's/^v//')
           if [[ -n "$LATEST_BOOTC" && "$LATEST_BOOTC" != "null" && "$LATEST_BOOTC" != "$CURRENT_BOOTC" ]]; then
             UPDATES="${UPDATES}bootc: $CURRENT_BOOTC -> $LATEST_BOOTC\n"
-            echo "bootc_update=true" >> $GITHUB_OUTPUT
-            echo "bootc_version=$LATEST_BOOTC" >> $GITHUB_OUTPUT
+            echo "bootc_update=true" >> "$GITHUB_OUTPUT"
+            echo "bootc_version=$LATEST_BOOTC" >> "$GITHUB_OUTPUT"
           fi
 
           if [[ -n "$UPDATES" ]]; then
-            echo "has_updates=true" >> $GITHUB_OUTPUT
+            echo "has_updates=true" >> "$GITHUB_OUTPUT"
             echo -e "Updates available:\n$UPDATES"
           else
-            echo "has_updates=false" >> $GITHUB_OUTPUT
+            echo "has_updates=false" >> "$GITHUB_OUTPUT"
             echo "All dependencies up to date"
           fi
 
@@ -112,26 +118,52 @@ jobs:
             rm -f "$TMP" "$VTMP"
           fi
 
+          bash download/check-checksums.sh "$CHECKSUMS"
+
       - name: Create Pull Request
+        id: cpr
         if: steps.check.outputs.has_updates == 'true'
-        uses: peter-evans/create-pull-request@4e1beaa7521e8b457b572c090b25bd3db56bf1c5 # v5
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
-          # GITHUB_TOKEN-created PRs do not trigger workflows (the Build
-          # workflow never runs on them). Set the WORKFLOW_PAT repo secret
-          # (fine-grained PAT or GitHub App token with contents+pull-requests
-          # write) to give auto-update PRs real CI; until then this falls back
-          # to GITHUB_TOKEN and PRs must be checked manually.
-          token: ${{ secrets.WORKFLOW_PAT || secrets.GITHUB_TOKEN }}
+          # GITHUB_TOKEN pushes and PRs start no pull_request workflow. The
+          # dispatch-build job below starts Build on the bot branch instead,
+          # so the PR head gets the "Build (Debian Trixie)" check.
+          token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "chore: update ostree/bootc to latest upstream releases"
           title: "chore: update ostree/bootc to latest upstream releases"
           body: |
-            Automated update of pinned upstream versions in `download/checksums.json`.
+            Automated update of the pinned upstream versions in
+            `download/checksums.json`.
 
-            Merging this PR triggers a build and publishes the updated
-            packages to the frostyard repository.
-
-            **Please verify the build passes before merging.** On a bootc
+            The Check Upstream Versions workflow starts **Build** on this
+            branch after each change, so the "Build (Debian Trixie)" check
+            on this PR shows whether the new versions build. On a bootc
             bump, also check whether `RUST_VERSION` in `build.sh` needs a
-            bump (a new bootc release may require a newer rustc to build).
-          branch: auto-update-checksums
+            bump: a new bootc release can require a newer rustc to build.
+
+            Merging this PR publishes nothing. It builds `main` again. To
+            release, run **Build** on `main` manually (`workflow_dispatch`):
+            that run creates a GitHub release and asks
+            frostyard/apt-publisher to publish it (trixie, component `image`).
+          branch: ${{ env.BOT_BRANCH }}
           delete-branch: true
+
+  # Start Build on the bot branch when this run created or changed the bot
+  # PR. A GITHUB_TOKEN workflow_dispatch event starts a run, unlike a
+  # GITHUB_TOKEN push. Build releases only on main, so this run builds and
+  # checks the packages and publishes nothing.
+  dispatch-build:
+    name: Start Build on the bot branch
+    needs: check-updates
+    if: needs.check-updates.outputs.operation == 'created' || needs.check-updates.outputs.operation == 'updated'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write # create the workflow_dispatch event
+
+    steps:
+      - name: Start Build on the bot branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run build.yml --ref "$BOT_BRANCH"

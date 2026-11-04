@@ -48,8 +48,10 @@ so a later forky build (`~deb14`) can sit beside it.
 
 Workflows:
 
-- **Build** (`build.yml`) — on push to `main` and on PRs: builds the
-  packages only.
+- **Build** (`build.yml`) — on push to `main`, on every PR and on a manual
+  run: the **Lint** job (actionlint, shellcheck,
+  `download/check-checksums.sh` and its test) and the **Build (Debian Trixie)** job, which
+  builds and installs the packages. A push or PR run publishes nothing.
 - **Releasing** — a manual run of **Build** on `main` (`workflow_dispatch`)
   also:
   1. checks that the build is exactly `bootc` and `libostree-1-1`, amd64,
@@ -62,9 +64,12 @@ Workflows:
      publishes the release to `trixie`, component `image`, then dispatches a
      frostyard/snosi image build.
 - **Check Upstream Versions** (`check-dependencies.yml`) — weekly: checks
-  for new ostree/bootc releases and opens a PR updating
-  `download/checksums.json`. Merging that PR triggers a build; releasing
-  needs a manual run.
+  for new ostree/bootc releases and opens or updates a PR (branch
+  `auto-update-checksums`) that changes `download/checksums.json`. A
+  `GITHUB_TOKEN` PR starts no workflow, so the run then starts **Build** on
+  that branch with `gh workflow run`; the PR shows its "Build (Debian
+  Trixie)" check. Merging the PR publishes nothing; releasing needs a manual
+  run of **Build** on `main`.
 
 ## Building locally
 

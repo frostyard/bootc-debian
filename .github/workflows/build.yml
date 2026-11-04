@@ -18,6 +18,43 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
+  # Checks the workflows, the shell scripts and the version pins. It is fast
+  # and needs no container, so a broken pin fails here before the build.
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Install actionlint
+        env:
+          VERSION: 1.7.12
+          SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          set -euo pipefail
+          tarball="actionlint_${VERSION}_linux_amd64.tar.gz"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$tarball" \
+            "https://github.com/rhysd/actionlint/releases/download/v${VERSION}/${tarball}"
+          echo "$SHA256  $RUNNER_TEMP/$tarball" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP" actionlint
+
+      # actionlint also runs shellcheck on each run: block.
+      - name: actionlint
+        run: '"$RUNNER_TEMP/actionlint" -color'
+
+      - name: shellcheck
+        run: shellcheck build.sh download/*.sh
+
+      - name: Check download/checksums.json
+        run: |
+          bash download/test-check-checksums.sh
+          bash download/check-checksums.sh
+
   build:
     name: Build (Debian Trixie)
     runs-on: ubuntu-latest
