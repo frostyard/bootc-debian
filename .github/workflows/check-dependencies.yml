@@ -9,7 +9,7 @@ permissions: {}
 
 # The branch of the bot PR. The dispatch job below starts Build on it.
 env:
-  BOT_BRANCH: auto-update-checksums
+  BOT_BRANCH: lucilla/scratch-bot-branch
 
 jobs:
   check-updates:
