@@ -50,7 +50,7 @@ Workflows:
 
 - **Build** (`build.yml`) — on push to `main`, on every PR and on a manual
   run: the **Lint** job (actionlint, shellcheck,
-  `download/check-checksums.sh`) and the **Build (Debian Trixie)** job, which
+  `download/check-checksums.sh` and its test) and the **Build (Debian Trixie)** job, which
   builds and installs the packages. A push or PR run publishes nothing.
 - **Releasing** — a manual run of **Build** on `main` (`workflow_dispatch`)
   also:

@@ -48,10 +48,12 @@ jobs:
         run: '"$RUNNER_TEMP/actionlint" -color'
 
       - name: shellcheck
-        run: shellcheck build.sh download/verified-download.sh download/check-checksums.sh
+        run: shellcheck build.sh download/*.sh
 
       - name: Check download/checksums.json
-        run: bash download/check-checksums.sh
+        run: |
+          bash download/test-check-checksums.sh
+          bash download/check-checksums.sh
 
   build:
     name: Build (Debian Trixie)
