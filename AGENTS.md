@@ -21,7 +21,7 @@ file.
 | [`download/verified-download.sh`](download/verified-download.sh) | `verified_download KEY PATH`: fetches 1 pin and fails on a sha256 mismatch. `build.sh` sources it. |
 | [`download/check-checksums.sh`](download/check-checksums.sh) | Checks the shape of `download/checksums.json`: 3 pins, numeric versions, lowercase sha256 sums, GitHub release URLs, and one bootc version for `bootc` and `bootc-vendor`. |
 | [`download/test-check-checksums.sh`](download/test-check-checksums.sh) | The negative test of the checksum check: the committed file passes and each broken variant fails. |
-| [`.github/workflows/build.yml`](.github/workflows/build.yml) | Lint, then the build and install of the packages. A manual run on `main` also releases and requests publication. |
+| [`.github/workflows/build.yml`](.github/workflows/build.yml) | Lint and, in parallel, the build and install of the packages. A manual run on `main` also releases and requests publication. |
 | [`.github/workflows/check-dependencies.yml`](.github/workflows/check-dependencies.yml) | Weekly: checks for new ostree and bootc releases, updates `download/checksums.json` in a bot PR, and starts Build on that branch. |
 | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | Runs `make ci` on pull requests and on a push to `main`. |
 | [`.github/workflows/risk-paths.yml`](.github/workflows/risk-paths.yml) | Calls core's reusable workflow, which adds the `risk:high` label. |

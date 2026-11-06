@@ -200,6 +200,14 @@ mut_b5_name_first_checkout() {
 	changed "$2" "$1" .github/workflows/fixture.yml
 }
 
+# A named step whose uses: line does not follow the list dash, with a comment
+# that names no version: the scan decides by the value, not by the position.
+mut_b5_named_step_comment_not_version() {
+	printf 'name: fixture\n\non:\n  workflow_dispatch:\n\npermissions: {}\n\ndefaults:\n  run:\n    shell: bash\n\njobs:\n  fixture:\n    runs-on: ubuntu-24.04\n    steps:\n      - name: Checkout\n        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # unknown\n        with:\n          persist-credentials: false\n' \
+		>"$1/.github/workflows/fixture.yml"
+	changed "$2" "$1" .github/workflows/fixture.yml
+}
+
 # A step written as a bare dash: YAML allows `-` alone, with the keys on the
 # lines below it.
 mut_b5_bare_dash_checkout() {
@@ -241,6 +249,14 @@ mut_b6_no_risk_json() {
 
 mut_b6_no_download_glob() {
 	jq '.paths |= map(select(.glob != "download/**"))' "$1/.github/risk-paths.json" \
+		>"$1/.github/risk-paths.json.new"
+	mv "$1/.github/risk-paths.json.new" "$1/.github/risk-paths.json"
+	changed "$2" "$1" .github/risk-paths.json
+}
+
+# The list must name itself (risk-paths spec, section C).
+mut_b6_no_self_entry() {
+	jq '.paths |= map(select(.glob != ".github/risk-paths.json"))' "$1/.github/risk-paths.json" \
 		>"$1/.github/risk-paths.json.new"
 	mv "$1/.github/risk-paths.json.new" "$1/.github/risk-paths.json"
 	changed "$2" "$1" .github/risk-paths.json
@@ -337,6 +353,7 @@ order=(
 	b5_unpinned_uses
 	b5_no_persist_credentials
 	b5_name_first_checkout
+	b5_named_step_comment_not_version
 	b5_bare_dash_checkout
 	b5_second_step_missing_persist
 	b5_first_step_missing_persist
@@ -344,6 +361,7 @@ order=(
 	b5_permissions_write_scope
 	b6_no_risk_json
 	b6_no_download_glob
+	b6_no_self_entry
 	b6_caller_main
 	b6_caller_wrong_workflow
 	b7_rename_risk_heading
@@ -377,6 +395,7 @@ declare -A expected=(
 	[b5_unpinned_uses]='uses is not pinned to a 40-character commit SHA'
 	[b5_no_persist_credentials]='the checkout step does not set persist-credentials: false'
 	[b5_name_first_checkout]='.github/workflows/fixture.yml:16: the checkout step does not set persist-credentials: false'
+	[b5_named_step_comment_not_version]='the step action comment must name the version'
 	[b5_bare_dash_checkout]='.github/workflows/fixture.yml:16: the checkout step does not set persist-credentials: false'
 	[b5_second_step_missing_persist]='.github/workflows/fixture.yml:19: the checkout step does not set persist-credentials: false'
 	[b5_first_step_missing_persist]='.github/workflows/fixture.yml:16: the checkout step does not set persist-credentials: false'
@@ -384,6 +403,7 @@ declare -A expected=(
 	[b5_permissions_write_scope]='the permissions block holds a scope that is not read'
 	[b6_no_risk_json]='.github/risk-paths.json is missing'
 	[b6_no_download_glob]='does not list the glob download/**'
+	[b6_no_self_entry]='does not list the glob .github/risk-paths.json'
 	[b6_caller_main]='uses is not pinned to a 40-character commit SHA'
 	[b6_caller_wrong_workflow]="no workflow calls frostyard/core's risk-paths.yml"
 	[b7_rename_risk_heading]='has no heading that names the risk tier'

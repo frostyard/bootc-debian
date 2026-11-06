@@ -141,19 +141,20 @@ done
 # B5: SHA-pinned actions, least-privilege permissions, no persisted
 # credentials (core ADR-0021). A step action pins a full SHA with the version
 # in a comment; a job-level reusable workflow pins a full SHA with a comment.
+# The scan tells them apart by the value, not by the position of the uses:
+# line: a reusable workflow names a path with /.github/workflows/ in it.
 workflow_files=("$ROOT"/.github/workflows/*.yml "$ROOT"/.github/workflows/*.yaml)
 ((${#workflow_files[@]})) || fail "no workflow files in .github/workflows"
 for f in "${workflow_files[@]}"; do
 	name=.github/workflows/$(basename "$f")
 	problem=$(awk -v name="$name" '
 		/^[[:space:]]*(#|$)/ { next }
-		/^[[:space:]]*-[[:space:]]+uses:/ { step = 1 }
-		/^[[:space:]]*uses:/ && !/^[[:space:]]*-/ { step = 0 }
 		!/(^|[[:space:]-])uses:[[:space:]]/ { next }
 		{
 			value = $0
 			sub(/^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*/, "", value)
 			if (value ~ /^\.\//) next
+			step = (value !~ /\/\.github\/workflows\//)
 			ref = value
 			sub(/^.*@/, "", ref)
 			sha = ref
@@ -246,7 +247,7 @@ risk=$ROOT/.github/risk-paths.json
 jq -e . "$risk" >/dev/null 2>&1 || fail ".github/risk-paths.json is not valid JSON"
 [[ $(jq -r '.schema_version' "$risk") == 1 ]] ||
 	fail ".github/risk-paths.json must set schema_version 1"
-for glob in '.github/workflows/**' 'build.sh' 'download/**'; do
+for glob in '.github/risk-paths.json' '.github/workflows/**' 'build.sh' 'download/**'; do
 	[[ $(jq -r --arg g "$glob" '[.paths[].glob] | index($g) != null' "$risk") == true ]] ||
 		fail ".github/risk-paths.json does not list the glob $glob"
 done

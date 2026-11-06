@@ -6,11 +6,12 @@ Contracts: [frostyard/core specs](https://github.com/frostyard/core/tree/main/do
 
 ## Overview
 
-This repository turns 2 pinned upstream release tarballs into 2 Debian
-packages, `bootc` and `libostree-1-1`, for Debian 13 (trixie) on amd64. A
-manual run of the **Build** workflow on `main` creates a GitHub release that
-holds the packages, and frostyard/apt-publisher publishes that release to the
-Frostyard APT repository at `https://repository.frostyard.org/debian/`.
+This repository turns 3 pinned upstream release tarballs (ostree, bootc and
+bootc's vendored crates) into 2 Debian packages, `bootc` and `libostree-1-1`,
+for Debian 13 (trixie) on amd64. A manual run of the **Build** workflow on
+`main` creates a GitHub release that holds the packages, and
+frostyard/apt-publisher publishes that release to the Frostyard APT repository
+at `https://repository.frostyard.org/debian/`.
 
 ```
 upstream tarballs ──► build.sh ──► dist/*.deb ──► GitHub release
@@ -73,15 +74,15 @@ removing them would be a later, separately approved change.
 
 | Workflow | Trigger | What it does |
 | --- | --- | --- |
-| [`build.yml`](../../.github/workflows/build.yml) | push to `main`, every pull request, a manual run | Lint, then the build and install of the packages. A push or pull request run publishes nothing. |
+| [`build.yml`](../../.github/workflows/build.yml) | push to `main`, every pull request, a manual run | Lint and, in parallel, the build and install of the packages. A push or pull request run publishes nothing. |
 | [`check-dependencies.yml`](../../.github/workflows/check-dependencies.yml) | weekly schedule, a manual run | Checks for new ostree and bootc releases and opens or updates a pull request that changes `download/checksums.json`. |
 | [`ci.yml`](../../.github/workflows/ci.yml) | pull request, push to `main` | Runs `make ci`. |
 | [`risk-paths.yml`](../../.github/workflows/risk-paths.yml) | `pull_request_target` | Calls core's reusable workflow, which adds the `risk:high` label. |
 
-**Build.** The **Lint** job runs actionlint, shellcheck,
-`download/check-checksums.sh` and its test. The **Build (Debian Trixie)** job
-builds the packages in a `debian:trixie` container and installs them, so a
-broken pin or a broken build fails here.
+**Build.** The 2 jobs run in parallel. The **Lint** job runs actionlint,
+shellcheck, `download/check-checksums.sh` and its test. The **Build (Debian
+Trixie)** job builds the packages in a `debian:trixie` container and installs
+them, so a broken pin or a broken build fails here.
 
 **Release.** A manual run of Build on `main` (`workflow_dispatch`) also:
 
