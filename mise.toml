@@ -1,0 +1,7 @@
+# Tool pins for the gates (core ADR-0043). The build dependencies of
+# build.sh are installed inside debian:trixie by the script itself, so they
+# are not tools here. actionlint is pinned to the version build.yml installs.
+[tools]
+shellcheck = "0.11.0"
+actionlint = "1.7.12"
+jq = "1.8.1"
