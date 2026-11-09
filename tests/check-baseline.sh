@@ -602,7 +602,29 @@ grep -qE '^[[:space:]]*(-[[:space:]]+)?run:[[:space:]]+make ci[[:space:]]*$' "$c
 	fail ".github/workflows/ci.yml has no run: make ci step"
 bot=$ROOT/.github/workflows/check-dependencies.yml
 [[ -f $bot ]] || fail ".github/workflows/check-dependencies.yml is missing"
-grep -qE '^[[:space:]]*(-[[:space:]]+)?run:[[:space:]]+gh workflow run ci\.yml([[:space:]]|$)' "$bot" ||
+# The dispatch counts only as the run: key of a step in the job
+# dispatch-build, at the step-key indent (8 spaces), outside a block scalar:
+# the same text in the bot PR body (body: |) or in a comment does not
+# dispatch ci.
+awk -v job=dispatch-build '
+function indent(line) { match(line, /^ */); return RLENGTH }
+BEGIN { blk = -1 }
+{
+	if (blk >= 0) {
+		if ($0 ~ /^[[:space:]]*$/ || indent($0) > blk) next
+		blk = -1
+	}
+	if ($0 ~ /^[^[:space:]#]/) { top = $0; cur = "" }
+	if (top ~ /^jobs:/ && $0 ~ /^  [A-Za-z0-9_-]+:[[:space:]]*$/) {
+		cur = $0
+		sub(/^  /, "", cur)
+		sub(/:.*/, "", cur)
+	}
+	if (cur == job && $0 ~ /^        run: gh workflow run ci\.yml([[:space:]]|$)/) found = 1
+	if ($0 ~ /^[^#]*:[[:space:]]+[|>][-+0-9]*[[:space:]]*(#.*)?$/ ||
+		$0 ~ /^[[:space:]]*-[[:space:]]+[|>][-+0-9]*[[:space:]]*(#.*)?$/) blk = indent($0)
+}
+END { exit !found }' "$bot" ||
 	fail ".github/workflows/check-dependencies.yml has no run line with gh workflow run ci.yml; a GITHUB_TOKEN bot PR starts no pull_request run, so its ci check must be dispatched"
 
 # B13: Dependabot updates the pinned actions (core ADR-0071).
