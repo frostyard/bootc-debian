@@ -82,9 +82,12 @@ on `PATH` (row B2 of core's baseline spec). CI runs `make ci` in
 - **A PR that touches a path in [`.github/risk-paths.json`](.github/risk-paths.json)
   gets the label of its strictest matched level** (core ADR-0068, ADR-0078):
   `level:L1` (read every line), `level:L2` (read the diff), `level:L3` (skim)
-  or `level:L4` (title and CI). L1 and L2 also get `risk:high`, and the
-  workflow removes `ready-for-human` when the head moves after the label (core
-  ADR-0077). The PR body names each matched path and why the change is safe.
+  or `level:L4` (title and CI). A core org floor can raise the computed level
+  above the entry's level, and a stricter level label that the PR already has
+  stays (the ratchet); only the author lowers it, by hand, with the reason in
+  the PR. L1 and L2 also get `risk:high`, and the workflow removes
+  `ready-for-human` when the head moves after the label (core ADR-0077). The PR
+  body names each matched path and why the change is safe.
 - **A blocking review point adds a guard:** a test that fails without the fix,
   or a rule here when no test can catch it, plus 1 line in
   [`.memory/corrections.jsonl`](.memory/corrections.jsonl)
