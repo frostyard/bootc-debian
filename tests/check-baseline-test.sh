@@ -508,6 +508,32 @@ mut_b12_no_make_ci() {
 	changed "$2" "$1" .github/workflows/ci.yml
 }
 
+# A GITHUB_TOKEN bot PR starts no pull_request run, so ci.yml needs the
+# workflow_dispatch trigger and check-dependencies.yml must dispatch it.
+mut_b12_no_workflow_dispatch() {
+	sed -i '/^  workflow_dispatch:$/d' "$1/.github/workflows/ci.yml"
+	changed "$2" "$1" .github/workflows/ci.yml
+}
+
+mut_b12_no_ci_dispatch() {
+	sed -i '/gh workflow run ci\.yml/d' "$1/.github/workflows/check-dependencies.yml"
+	changed "$2" "$1" .github/workflows/check-dependencies.yml
+}
+
+# The text in a comment is not a run step.
+mut_b12_ci_dispatch_commented() {
+	sed -i 's|^\([[:space:]]*\)run: gh workflow run ci\.yml|\1# gh workflow run ci.yml|' \
+		"$1/.github/workflows/check-dependencies.yml"
+	changed "$2" "$1" .github/workflows/check-dependencies.yml
+}
+
+# The text after another command is not a dispatch.
+mut_b12_ci_dispatch_echo() {
+	sed -i 's|^\([[:space:]]*\)run: gh workflow run ci\.yml|\1run: echo gh workflow run ci.yml|' \
+		"$1/.github/workflows/check-dependencies.yml"
+	changed "$2" "$1" .github/workflows/check-dependencies.yml
+}
+
 # B13: Dependabot.
 mut_b13_no_github_actions() {
 	sed -i 's/^  - package-ecosystem: "github-actions"$/  - package-ecosystem: "npm"/' \
@@ -610,6 +636,10 @@ order=(
 	b6_caller_nel_in_pin_comment
 	b7_rename_risk_heading
 	b12_no_make_ci
+	b12_no_workflow_dispatch
+	b12_no_ci_dispatch
+	b12_ci_dispatch_commented
+	b12_ci_dispatch_echo
 	b13_no_github_actions
 	b14_no_security_url
 	b15_codeowners
@@ -684,6 +714,10 @@ declare -A expected=(
 	[b6_caller_wrong_workflow]="expected '    uses: frostyard/core/.github/workflows/pr-triage.yml@<40 hex>'"
 	[b7_rename_risk_heading]='has no heading that names the risk tier'
 	[b12_no_make_ci]='has no run: make ci step'
+	[b12_no_workflow_dispatch]='has no workflow_dispatch trigger'
+	[b12_no_ci_dispatch]='has no run line with gh workflow run ci.yml'
+	[b12_ci_dispatch_commented]='has no run line with gh workflow run ci.yml'
+	[b12_ci_dispatch_echo]='has no run line with gh workflow run ci.yml'
 	[b13_no_github_actions]='has no github-actions entry'
 	[b14_no_security_url]='does not link https://github.com/frostyard/bootc-debian/security'
 	[b15_codeowners]='.github/CODEOWNERS must not exist'

@@ -588,14 +588,22 @@ fi
 grep -qE '^#+ .*Risk tier' "$ROOT/.github/pull_request_template.md" ||
 	fail ".github/pull_request_template.md has no heading that names the risk tier"
 
-# B12: CI runs the make gate on pull requests (core ADR-0071).
+# B12: CI runs the make gate on pull requests, and the bot workflow
+# dispatches it (core ADR-0071).
 ci=$ROOT/.github/workflows/ci.yml
 [[ -f $ci ]] || fail ".github/workflows/ci.yml is missing"
 awk '/^on:/ { on = 1; next } on && /^[^[:space:]]/ { on = 0 }
 	on && /^[[:space:]]+pull_request:/ { found = 1 } END { exit !found }' "$ci" ||
 	fail ".github/workflows/ci.yml does not run on pull_request"
+awk '/^on:/ { on = 1; next } on && /^[^[:space:]]/ { on = 0 }
+	on && /^[[:space:]]+workflow_dispatch:/ { found = 1 } END { exit !found }' "$ci" ||
+	fail ".github/workflows/ci.yml has no workflow_dispatch trigger; a GITHUB_TOKEN bot PR starts no pull_request run, so ci must be dispatched there"
 grep -qE '^[[:space:]]*(-[[:space:]]+)?run:[[:space:]]+make ci[[:space:]]*$' "$ci" ||
 	fail ".github/workflows/ci.yml has no run: make ci step"
+bot=$ROOT/.github/workflows/check-dependencies.yml
+[[ -f $bot ]] || fail ".github/workflows/check-dependencies.yml is missing"
+grep -qE '^[[:space:]]*(-[[:space:]]+)?run:[[:space:]]+gh workflow run ci\.yml([[:space:]]|$)' "$bot" ||
+	fail ".github/workflows/check-dependencies.yml has no run line with gh workflow run ci.yml; a GITHUB_TOKEN bot PR starts no pull_request run, so its ci check must be dispatched"
 
 # B13: Dependabot updates the pinned actions (core ADR-0071).
 dependabot=$ROOT/.github/dependabot.yml

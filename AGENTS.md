@@ -22,8 +22,8 @@ file.
 | [`download/check-checksums.sh`](download/check-checksums.sh) | Checks the shape of `download/checksums.json`: 3 pins, numeric versions, lowercase sha256 sums, GitHub release URLs, and one bootc version for `bootc` and `bootc-vendor`. |
 | [`download/test-check-checksums.sh`](download/test-check-checksums.sh) | The negative test of the checksum check: the committed file passes and each broken variant fails. |
 | [`.github/workflows/build.yml`](.github/workflows/build.yml) | Lint and, in parallel, the build and install of the packages. A manual run on `main` also releases and requests publication. |
-| [`.github/workflows/check-dependencies.yml`](.github/workflows/check-dependencies.yml) | Weekly: checks for new ostree and bootc releases, updates `download/checksums.json` in a bot PR, and starts Build on that branch. |
-| [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | Runs `make ci` on pull requests and on a push to `main`. |
+| [`.github/workflows/check-dependencies.yml`](.github/workflows/check-dependencies.yml) | Weekly: checks for new ostree and bootc releases, updates `download/checksums.json` in a bot PR, and starts Build and ci on that branch. |
+| [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | Runs `make ci` on pull requests, on a push to `main`, and on the dispatch that `check-dependencies.yml` sends to the bot branch. |
 | [`.github/workflows/risk-paths.yml`](.github/workflows/risk-paths.yml) | Calls core's `pr-triage.yml` reusable workflow, which adds the `level:L1` to `level:L4` label and `risk:high` at L1 and L2. |
 | [`tests/`](tests/) | The baseline check and its negative tests. |
 | [`docs/`](docs/README.md) | The design, the runbooks, the ADRs, the specs and the plans. |
@@ -70,9 +70,10 @@ on `PATH` (row B2 of core's baseline spec). CI runs `make ci` in
   supported Rust version does not change.
 - **Keep the file name `build.yml`, its `workflow_dispatch` trigger and the
   job name `Build (Debian Trixie)`.** That job is a required status check, and
-  the bot workflow dispatches `build.yml` on the branch `auto-update-checksums`
-  with `gh workflow run`, because a `GITHUB_TOKEN` pull request starts no
-  workflow.
+  the bot workflow dispatches `build.yml` and `ci.yml` on the branch
+  `auto-update-checksums` with `gh workflow run`, because a `GITHUB_TOKEN`
+  pull request starts no workflow. `ci` is the gate check, so it needs its own
+  `workflow_dispatch` trigger.
 - **Every action is pinned to a full commit SHA with a `# vX.Y.Z` comment**
   (a frostyard/core reusable workflow: `# frostyard/core main, YYYY-MM-DD`,
   because core has no release tags), **every checkout sets
