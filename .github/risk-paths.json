@@ -1,36 +1,45 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "default_level": "L3",
   "paths": [
     {
       "glob": ".github/risk-paths.json",
+      "level": "L2",
       "why": "governance: the high-risk path list itself"
     },
     {
       "glob": ".github/workflows/**",
+      "level": "L1",
       "why": "publication: the release and attestation workflow, the publish request with APT_PUBLISH_TOKEN, the bot that opens version PRs and dispatches Build, CI, the caller"
     },
     {
       "glob": "build.sh",
+      "level": "L1",
       "why": "boot chain: builds and packages the bootc and libostree-1-1 that every Frostyard image boots with"
     },
     {
       "glob": "download/**",
+      "level": "L1",
       "why": "update verification: the pinned upstream URLs and sha256 sums, and the verified download that refuses a mismatch"
     },
     {
       "glob": "tests/**",
+      "level": "L2",
       "why": "governance: the baseline check and its negative tests, which hold the instruction surface, the workflow pins and the README to the baseline"
     },
     {
       "glob": "Makefile",
+      "level": "L2",
       "why": "governance: the verify gate"
     },
     {
       "glob": "mise.toml",
+      "level": "L2",
       "why": "governance: the tool pins that CI installs"
     },
     {
       "glob": "mise.lock",
+      "level": "L2",
       "why": "governance: the checksums of the tools that CI installs"
     }
   ]

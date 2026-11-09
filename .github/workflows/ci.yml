@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,8 +17,9 @@ defaults:
     shell: bash
 
 # The Lint job in build.yml stays. A GITHUB_TOKEN pull request starts no
-# workflow, so a bot PR (branch auto-update-checksums) gets its checks only
-# from the Build run that check-dependencies.yml dispatches on that branch.
+# workflow, so a bot PR (branch auto-update-checksums) gets its checks from
+# the Build run and the ci run that check-dependencies.yml dispatches on that
+# branch. The workflow_dispatch trigger above is what lets the ci run start.
 jobs:
   ci:
     name: ci

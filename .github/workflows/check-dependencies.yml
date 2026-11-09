@@ -7,7 +7,7 @@ on:
 
 permissions: {}
 
-# The branch of the bot PR. The dispatch job below starts Build on it.
+# The branch of the bot PR. The dispatch job below starts Build and ci on it.
 env:
   BOT_BRANCH: auto-update-checksums
 
@@ -126,8 +126,9 @@ jobs:
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           # GITHUB_TOKEN pushes and PRs start no pull_request workflow. The
-          # dispatch-build job below starts Build on the bot branch instead,
-          # so the PR head gets the "Build (Debian Trixie)" check.
+          # dispatch-build job below starts Build and ci on the bot branch
+          # instead, so the PR head gets the "Build (Debian Trixie)" and
+          # "ci" checks.
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "chore: update ostree/bootc to latest upstream releases"
           title: "chore: update ostree/bootc to latest upstream releases"
@@ -135,11 +136,12 @@ jobs:
             Automated update of the pinned upstream versions in
             `download/checksums.json`.
 
-            The Check Upstream Versions workflow starts **Build** on this
-            branch after each change, so the "Build (Debian Trixie)" check
-            on this PR shows whether the new versions build. On a bootc
-            bump, also check whether `RUST_VERSION` in `build.sh` needs a
-            bump: a new bootc release can require a newer rustc to build.
+            The Check Upstream Versions workflow starts **Build** and **ci**
+            on this branch after each change, so the "Build (Debian Trixie)"
+            and "ci" checks on this PR show whether the new versions build
+            and pass the gate. On a bootc bump, also check whether
+            `RUST_VERSION` in `build.sh` needs a bump: a new bootc release
+            can require a newer rustc to build.
 
             Merging this PR publishes nothing. It builds `main` again. To
             release, run **Build** on `main` manually (`workflow_dispatch`):
@@ -148,12 +150,13 @@ jobs:
           branch: ${{ env.BOT_BRANCH }}
           delete-branch: true
 
-  # Start Build on the bot branch when this run created or changed the bot
-  # PR. A GITHUB_TOKEN workflow_dispatch event starts a run, unlike a
-  # GITHUB_TOKEN push. Build releases only on main, so this run builds and
-  # checks the packages and publishes nothing.
+  # Start Build and ci on the bot branch when this run created or changed
+  # the bot PR. A GITHUB_TOKEN workflow_dispatch event starts a run, unlike a
+  # GITHUB_TOKEN push. ci is the gate check, so the bot PR must run it too.
+  # Build releases only on main, so this run builds and checks the packages
+  # and publishes nothing.
   dispatch-build:
-    name: Start Build on the bot branch
+    name: Start Build and ci on the bot branch
     needs: check-updates
     if: needs.check-updates.outputs.operation == 'created' || needs.check-updates.outputs.operation == 'updated'
     runs-on: ubuntu-latest
@@ -167,3 +170,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: gh workflow run build.yml --ref "$BOT_BRANCH"
+
+      - name: Start ci on the bot branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run ci.yml --ref "$BOT_BRANCH"
