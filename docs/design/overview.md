@@ -77,7 +77,7 @@ removing them would be a later, separately approved change.
 | [`build.yml`](../../.github/workflows/build.yml) | push to `main`, every pull request, a manual run | Lint and, in parallel, the build and install of the packages. A push or pull request run publishes nothing. |
 | [`check-dependencies.yml`](../../.github/workflows/check-dependencies.yml) | weekly schedule, a manual run | Checks for new ostree and bootc releases and opens or updates a pull request that changes `download/checksums.json`. |
 | [`ci.yml`](../../.github/workflows/ci.yml) | pull request, push to `main` | Runs `make ci`. |
-| [`risk-paths.yml`](../../.github/workflows/risk-paths.yml) | `pull_request_target` | Calls core's reusable workflow, which adds the `risk:high` label. |
+| [`risk-paths.yml`](../../.github/workflows/risk-paths.yml) | `pull_request_target` | Calls core's `pr-triage.yml` reusable workflow, which adds the `level:L1` to `level:L4` label and `risk:high` at L1 and L2. |
 
 **Build.** The 2 jobs run in parallel. The **Lint** job runs actionlint,
 shellcheck, `download/check-checksums.sh` and its test. The **Build (Debian
