@@ -5,13 +5,13 @@
     "version": "2026.6"
   },
   "bootc": {
-    "url": "https://github.com/bootc-dev/bootc/releases/download/v1.17.3/bootc-1.17.3.tar.zstd",
-    "sha256": "5841cd9f7d684fb604e1f12112fa6373bd61bb8124f38f410fe007722c474280",
-    "version": "1.17.3"
+    "url": "https://github.com/bootc-dev/bootc/releases/download/v1.17.4/bootc-1.17.4.tar.zstd",
+    "sha256": "57d8913f9c15c92aa4bc31cb927d7cf9fb76cad623ccb7f8a83e7322d0f9a802",
+    "version": "1.17.4"
   },
   "bootc-vendor": {
-    "url": "https://github.com/bootc-dev/bootc/releases/download/v1.17.3/bootc-1.17.3-vendor.tar.zstd",
-    "sha256": "86539ca4458b6c23614bdcc2aecf1b1104264767268bdfd26b59360520e1217c",
-    "version": "1.17.3"
+    "url": "https://github.com/bootc-dev/bootc/releases/download/v1.17.4/bootc-1.17.4-vendor.tar.zstd",
+    "sha256": "84e7e1cf4f312450d2fa6c28cdeadf0360ee48ae864c5921e76c7507523610c2",
+    "version": "1.17.4"
   }
 }
