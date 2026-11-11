@@ -627,6 +627,247 @@ BEGIN { blk = -1 }
 END { exit !found }' "$bot" ||
 	fail ".github/workflows/check-dependencies.yml has no run line with gh workflow run ci.yml; a GITHUB_TOKEN bot PR starts no pull_request run, so its ci check must be dispatched"
 
+# B12 bot labels: a pull request that GITHUB_TOKEN opens starts no
+# pull_request_target run, so the PR triage caller never labels the bot PR
+# (frostyard/core#233). The bot sets its own level labels on that PR instead:
+# add-paths limits its commit to the files it writes, and labels carries the
+# level of those files, plus risk:high at L1 and L2 (core
+# docs/specs/pr-triage.md). This check holds the labels to the level of the
+# add-paths in .github/risk-paths.json, with the org floors of core
+# docs/specs/risk-paths.md rules D and G.
+bot_path_level() { # bot_path_level PATH: sets bot_level to the PR level of PATH
+	local path=$1 glob level segment base ext bot_word rest
+	local -a bot_words
+	bot_level=$(jq -r '.default_level' "$risk")
+	while IFS=$'\t' read -r glob level; do
+		if risk_path_matches "$glob" "$path"; then
+			if [[ $level < $bot_level ]]; then bot_level=$level; fi
+		fi
+	done < <(jq -r '.paths[] | select(type == "object") | [(.glob // ""), (.level // "")] | @tsv' "$risk")
+	# Rule G floor, an L1 word: the path in lower case, split at / . - _.
+	bot_words=()
+	rest=${path,,}
+	while [[ $rest == *[/._-]* ]]; do
+		bot_words+=("${rest%%[/._-]*}")
+		rest=${rest#*[/._-]}
+	done
+	bot_words+=("$rest")
+	for bot_word in "${bot_words[@]}"; do
+		case $bot_word in
+		secret | secrets | credential | credentials | password | passwords | \
+			passwd | signing | keyring | keyrings | keys | gpg | pgp)
+			bot_level=L1
+			return 0
+			;;
+		esac
+	done
+	# Rule G floor, an L1 file extension: after the last . of the last segment,
+	# when that segment holds a . that is not only a leading one.
+	segment=${path##*/}
+	ext=''
+	if [[ $segment == *.* ]]; then
+		base=${segment%.*}
+		if [[ -n $base ]]; then
+			ext=${segment##*.}
+			ext=${ext,,}
+		fi
+	fi
+	case $ext in
+	pem | key | p12 | pfx | gpg | asc)
+		bot_level=L1
+		return 0
+		;;
+	esac
+	# Rule G floor, an L2 glob.
+	for glob in '.github/workflows/**' '.github/actions/**' \
+		'.github/risk-paths.json' 'policies/**' '.github/policies/**'; do
+		if risk_path_matches "$glob" "$path"; then
+			if [[ $bot_level == L3 || $bot_level == L4 ]]; then bot_level=L2; fi
+			break
+		fi
+	done
+	return 0
+}
+
+bot_sorted_set() { # bot_sorted_set LABEL...: 1 line of the labels, sorted, unique
+	if (($# == 0)); then return 0; fi
+	printf '%s\n' "$@" | LC_ALL=C sort -u | paste -sd, -
+}
+
+# The scan reads the with: block of the single create-pull-request step. It
+# skips every block scalar (the bot PR body, a run: script) and comment line,
+# so text there is not an input. A key is read at the child indent of with:,
+# as a plain inline value or a literal block scalar (|); a quoted value, a
+# folded block (>) and a flow value fail, and so does an expression.
+bot_scan=$(awk '
+function indent(line) { match(line, /^ */); return RLENGTH }
+function trim(text) { sub(/^[[:space:]]+/, "", text); sub(/[[:space:]]+$/, "", text); return text }
+function expr(key) {
+	print "ERR\tthe " key " input holds a ${{ }} expression; the level of the PR cannot be computed from it"
+}
+function emit(key, value, strip,    n, i, parts, item) {
+	if (value ~ /\$\{\{/) { expr(key); return }
+	if (strip && value ~ /[[:space:]]#/) sub(/[[:space:]]#.*$/, "", value)
+	value = trim(value)
+	n = split(value, parts, ",")
+	for (i = 1; i <= n; i++) {
+		item = trim(parts[i])
+		if (item != "") print "ITEM\t" key "\t" item
+	}
+}
+BEGIN {
+	blk = -1; reading = ""; steps = 0
+	stepindent = -1; inwith = 0; childindent = -1
+	tick = sprintf("%c", 39); quote = sprintf("%c", 34)
+}
+{
+	line = $0
+	if (blk >= 0) {
+		if (line ~ /^[[:space:]]*$/) next
+		if (indent(line) > blk) {
+			if (reading != "") emit(reading, trim(line), 0)
+			next
+		}
+		blk = -1
+		reading = ""
+	}
+	if (line ~ /^[[:space:]]*(#|$)/) next
+	ind = indent(line)
+	rest = line
+	sub(/^[[:space:]]+/, "", rest)
+	keyind = ind
+	if (rest ~ /^-([[:space:]]|$)/) {
+		after = rest
+		sub(/^-/, "", after)
+		spaces = 0
+		while (substr(after, spaces + 1, 1) == " ") spaces++
+		keyind = ind + 1 + spaces
+		rest = substr(after, spaces + 1)
+	}
+	if (stepindent >= 0 && ind < stepindent) {
+		stepindent = -1; inwith = 0; childindent = -1
+	}
+	colon = index(rest, ":")
+	if (colon == 0) next
+	key = substr(rest, 1, colon - 1)
+	value = trim(substr(rest, colon + 1))
+	if (key == "uses") {
+		ref = value
+		if (substr(ref, 1, 1) == quote || substr(ref, 1, 1) == tick) ref = substr(ref, 2)
+		if (ref ~ /^peter-evans\/create-pull-request@/) {
+			steps++
+			if (steps == 1) { stepindent = keyind; inwith = 0; childindent = -1 }
+		}
+		next
+	}
+	interest = 0
+	if (stepindent >= 0) {
+		if (ind == stepindent) {
+			inwith = (key == "with" && value == "") ? 1 : 0
+			childindent = -1
+		} else if (inwith && ind > stepindent) {
+			if (childindent < 0) childindent = ind
+			if (ind == childindent && (key == "add-paths" || key == "labels")) interest = 1
+		}
+	}
+	if (value ~ /^[|>][-+0-9]*([[:space:]]+#.*)?$/) {
+		blk = ind
+		reading = ""
+		if (interest) {
+			print "KEY\t" key
+			if (value ~ /^>/) {
+				print "ERR\tthe " key " input is a folded block scalar (>); it must be a plain value or a literal block (|)"
+			} else {
+				reading = key
+			}
+		}
+		next
+	}
+	if (!interest) next
+	print "KEY\t" key
+	first = substr(value, 1, 1)
+	if (first == quote || first == tick || first == "[" || first == "{") {
+		print "ERR\tthe " key " input is a quoted or flow value; it must be a plain value or a literal block (|)"
+		next
+	}
+	emit(key, value, 1)
+}
+END { print "COUNT\t" steps }
+' "$bot") || fail ".github/workflows/check-dependencies.yml: the bot PR input scan failed"
+bot_cpr_steps=0
+bot_has_add_paths=0
+bot_has_labels=0
+bot_add_paths=()
+bot_labels=()
+while IFS=$'\t' read -r bot_kind bot_name bot_value; do
+	case $bot_kind in
+	COUNT) bot_cpr_steps=$bot_name ;;
+	ERR) fail "$bot_name" ;;
+	KEY)
+		case $bot_name in
+		add-paths) bot_has_add_paths=1 ;;
+		labels) bot_has_labels=1 ;;
+		esac
+		;;
+	ITEM)
+		case $bot_name in
+		add-paths) bot_add_paths+=("$bot_value") ;;
+		labels) bot_labels+=("$bot_value") ;;
+		esac
+		;;
+	esac
+done <<<"$bot_scan"
+[[ $bot_cpr_steps == 1 ]] ||
+	fail "check-dependencies.yml must have exactly 1 peter-evans/create-pull-request step, found $bot_cpr_steps"
+((bot_has_add_paths)) ||
+	fail "the create-pull-request step has no add-paths input; without it the bot commits every change, so its level cannot be computed"
+((bot_has_labels)) ||
+	fail "the create-pull-request step has no labels input; a GITHUB_TOKEN PR gets no triage run, so the bot must set its level labels (frostyard/core#233)"
+((${#bot_add_paths[@]})) ||
+	fail "the create-pull-request step has no add-paths input; without it the bot commits every change, so its level cannot be computed"
+bot_pr_level=''
+for bot_path in "${bot_add_paths[@]}"; do
+	case $bot_path in
+	*'*'* | *'?'* | *'['* | *']'* | *'{'* | *'}'* | *'!'* | *':'* | /* | ./*)
+		fail "check-dependencies.yml: the add-paths input '$bot_path' must be a literal path relative to the root: no glob character and no leading / or ./"
+		;;
+	esac
+	bot_segments=()
+	bot_rest=$bot_path
+	while [[ $bot_rest == */* ]]; do
+		bot_segments+=("${bot_rest%%/*}")
+		bot_rest=${bot_rest#*/}
+	done
+	bot_segments+=("$bot_rest")
+	for bot_segment in "${bot_segments[@]}"; do
+		case $bot_segment in
+		'') fail "check-dependencies.yml: the add-paths input '$bot_path' holds an empty path segment" ;;
+		..) fail "check-dependencies.yml: the add-paths input '$bot_path' holds a .. segment; it must stay inside the repository" ;;
+		esac
+	done
+	[[ -f $ROOT/$bot_path ]] ||
+		fail "check-dependencies.yml: the add-paths input '$bot_path' is not a regular file in the tree"
+	bot_path_level "$bot_path"
+	if [[ -z $bot_pr_level || $bot_level < $bot_pr_level ]]; then
+		bot_pr_level=$bot_level
+	fi
+done
+bot_paths_joined=$(IFS=,; printf '%s' "${bot_add_paths[*]}")
+bot_found_set=()
+for bot_label in "${bot_labels[@]}"; do
+	case $bot_label in
+	level:* | risk:high) bot_found_set+=("$bot_label") ;;
+	esac
+done
+bot_expected_set=("level:$bot_pr_level")
+if [[ $bot_pr_level == L1 || $bot_pr_level == L2 ]]; then
+	bot_expected_set+=('risk:high')
+fi
+bot_found=$(bot_sorted_set ${bot_found_set[@]+"${bot_found_set[@]}"})
+bot_expected=$(bot_sorted_set "${bot_expected_set[@]}")
+[[ $bot_found == "$bot_expected" ]] ||
+	fail "check-dependencies.yml: the bot PR labels are '$bot_found'; the files it commits ($bot_paths_joined) are at $bot_pr_level, so it needs '$bot_expected' (frostyard/core#233)"
+
 # B13: Dependabot updates the pinned actions (core ADR-0071).
 dependabot=$ROOT/.github/dependabot.yml
 [[ -f $dependabot ]] || fail ".github/dependabot.yml is missing"
@@ -677,4 +918,4 @@ words=$(wc -w <"$ROOT/README.md")
 words=${words//[[:space:]]/}
 ((words <= 1000)) || fail "README.md has $words words; the limit is 1000"
 
-echo "ok - baseline: ${#workflow_files[@]} workflows, $correction_lines corrections lines, $risk_count risk-path entries, ${#caller_body[@]} caller lines, README $words words"
+echo "ok - baseline: ${#workflow_files[@]} workflows, $correction_lines corrections lines, $risk_count risk-path entries, ${#caller_body[@]} caller lines, bot labels level:$bot_pr_level, README $words words"

@@ -65,6 +65,14 @@ on `PATH` (row B2 of core's baseline spec). CI runs `make ci` in
   and [`download/check-checksums.sh`](download/check-checksums.sh) checks the
   shape of that file. Never edit a version, a URL or a sha256 in `build.sh` or
   in a workflow.
+- **The bot PR sets its own level labels.** A PR that `GITHUB_TOKEN` opens
+  starts no `pull_request_target` run, so the triage caller never labels the
+  version PR (frostyard/core#233); [`check-dependencies.yml`](.github/workflows/check-dependencies.yml)
+  sets them in the `create-pull-request` step instead: `add-paths` limits the
+  commit to `download/checksums.json`, and `labels` names the level of that
+  file plus `risk:high` at L1 and L2. [`tests/check-baseline.sh`](tests/check-baseline.sh)
+  checks the labels against the level that `.github/risk-paths.json` gives the
+  add-paths, so a list change that moves that level must change them too.
 - **On a bootc bump, check `RUST_VERSION` in [`build.sh`](build.sh).** A new
   bootc release can need a newer rustc to build, even when its own minimum
   supported Rust version does not change.

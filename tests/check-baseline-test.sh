@@ -545,6 +545,111 @@ mut_b12_ci_dispatch_in_body() {
 	changed "$2" "$1" .github/workflows/check-dependencies.yml
 }
 
+# B12 bot labels: the bot labels its own PR (frostyard/core#233). Each case
+# changes 1 part of the with: block of the create-pull-request step, or the
+# level that .github/risk-paths.json gives the file it commits.
+bot_wf=.github/workflows/check-dependencies.yml
+
+mut_b12_bot_labels_removed() {
+	sed -i -e '/^          labels: |$/d' \
+		-e '/^            level:L1$/d' \
+		-e '/^            risk:high$/d' "$1/$bot_wf"
+	changed "$2" "$1" "$bot_wf"
+}
+
+mut_b12_bot_level_l3() {
+	sed -i 's@^            level:L1$@            level:L3@' "$1/$bot_wf"
+	changed "$2" "$1" "$bot_wf"
+}
+
+mut_b12_bot_no_risk_high() {
+	sed -i '/^            risk:high$/d' "$1/$bot_wf"
+	changed "$2" "$1" "$bot_wf"
+}
+
+mut_b12_bot_extra_level() {
+	sed -i '/^            level:L1$/a\            level:L2' "$1/$bot_wf"
+	changed "$2" "$1" "$bot_wf"
+}
+
+mut_b12_bot_no_add_paths() {
+	sed -i '/^          add-paths: download\/checksums\.json$/d' "$1/$bot_wf"
+	changed "$2" "$1" "$bot_wf"
+}
+
+mut_b12_bot_add_paths_glob() {
+	sed -i 's@^          add-paths: download/checksums\.json$@          add-paths: download/*@' "$1/$bot_wf"
+	changed "$2" "$1" "$bot_wf"
+}
+
+# The file's entry moves to L3 in the list; the labels still say L1.
+mut_b12_bot_risk_l3() {
+	jq '(.paths[] | select(.glob == "download/**")).level = "L3"' \
+		"$1/.github/risk-paths.json" >"$1/.github/risk-paths.json.new"
+	mv "$1/.github/risk-paths.json.new" "$1/.github/risk-paths.json"
+	changed "$2" "$1" .github/risk-paths.json
+}
+
+# The list says L3 and the labels follow it, but the file name holds the L1
+# word "signing", so the org floor (rule G) makes the PR level L1.
+mut_b12_bot_floor_word() {
+	jq '(.paths[] | select(.glob == "download/**")).level = "L3"' \
+		"$1/.github/risk-paths.json" >"$1/.github/risk-paths.json.new"
+	mv "$1/.github/risk-paths.json.new" "$1/.github/risk-paths.json"
+	printf '{"signing": true}\n' >"$1/download/signing.json"
+	sed -i -e 's@^          add-paths: download/checksums\.json$@          add-paths: download/signing.json@' \
+		-e 's@^            level:L1$@            level:L3@' \
+		-e '/^            risk:high$/d' "$1/$bot_wf"
+	changed "$2" "$1" "$bot_wf"
+}
+
+mut_b12_bot_labels_expression() {
+	awk '
+		/^          labels: [|]$/ {
+			print "          labels: ${{ steps.check.outputs.level }}"
+			skip = 2
+			next
+		}
+		skip > 0 { skip--; next }
+		{ print }' "$1/$bot_wf" >"$1/$bot_wf.new"
+	mv "$1/$bot_wf.new" "$1/$bot_wf"
+	changed "$2" "$1" "$bot_wf"
+}
+
+# A comment line is not an input: the label block is commented out here.
+mut_b12_bot_labels_commented() {
+	sed -i -e 's@^          labels: |$@          # labels: |@' \
+		-e 's@^            level:L1$@            #   level:L1@' \
+		-e 's@^            risk:high$@            #   risk:high@' "$1/$bot_wf"
+	changed "$2" "$1" "$bot_wf"
+}
+
+mut_b12_bot_second_step() {
+	local sha
+	sha=$(sed -nE 's%^ *(- )?uses: peter-evans/create-pull-request@([0-9a-f]{40}).*%\2%p' "$1/$bot_wf")
+	if [[ -z $sha ]]; then return 1; fi
+	printf '\n      - uses: peter-evans/create-pull-request@%s # v8.1.1\n' "$sha" >>"$1/$bot_wf"
+	changed "$2" "$1" "$bot_wf"
+}
+
+# The same lower level with labels that follow it passes.
+mut_b12_bot_risk_l3_ok() {
+	jq '(.paths[] | select(.glob == "download/**")).level = "L3"' \
+		"$1/.github/risk-paths.json" >"$1/.github/risk-paths.json.new"
+	mv "$1/.github/risk-paths.json.new" "$1/.github/risk-paths.json"
+	sed -i -e 's@^            level:L1$@            level:L3@' \
+		-e '/^            risk:high$/d' "$1/$bot_wf"
+	changed "$2" "$1" "$bot_wf"
+}
+
+# An inline value is the other accepted form, split at the comma.
+mut_b12_bot_labels_inline_ok() {
+	sed -i -e 's@^          labels: |$@          labels: level:L1, risk:high@' \
+		-e '/^            level:L1$/d' \
+		-e '/^            risk:high$/d' "$1/$bot_wf"
+	changed "$2" "$1" "$bot_wf"
+}
+
 # B13: Dependabot.
 mut_b13_no_github_actions() {
 	sed -i 's/^  - package-ecosystem: "github-actions"$/  - package-ecosystem: "npm"/' \
@@ -652,6 +757,17 @@ order=(
 	b12_ci_dispatch_commented
 	b12_ci_dispatch_echo
 	b12_ci_dispatch_in_body
+	b12_bot_labels_removed
+	b12_bot_level_l3
+	b12_bot_no_risk_high
+	b12_bot_extra_level
+	b12_bot_no_add_paths
+	b12_bot_add_paths_glob
+	b12_bot_risk_l3
+	b12_bot_floor_word
+	b12_bot_labels_expression
+	b12_bot_labels_commented
+	b12_bot_second_step
 	b13_no_github_actions
 	b14_no_security_url
 	b15_codeowners
@@ -663,6 +779,8 @@ order=(
 
 # Cases that mutate the tree and must pass.
 ok_order=(
+	b12_bot_risk_l3_ok
+	b12_bot_labels_inline_ok
 	b6_caller_other_sha_comment_ok
 	b6_caller_leading_comments_ok
 	b6_glob_one_alternative_ok
@@ -731,6 +849,17 @@ declare -A expected=(
 	[b12_ci_dispatch_commented]='has no run line with gh workflow run ci.yml'
 	[b12_ci_dispatch_echo]='has no run line with gh workflow run ci.yml'
 	[b12_ci_dispatch_in_body]='has no run line with gh workflow run ci.yml'
+	[b12_bot_labels_removed]='the create-pull-request step has no labels input'
+	[b12_bot_level_l3]="the bot PR labels are 'level:L3,risk:high'"
+	[b12_bot_no_risk_high]="the bot PR labels are 'level:L1'"
+	[b12_bot_extra_level]="the bot PR labels are 'level:L1,level:L2,risk:high'"
+	[b12_bot_no_add_paths]='the create-pull-request step has no add-paths input'
+	[b12_bot_add_paths_glob]="the add-paths input 'download/*' must be a literal path"
+	[b12_bot_risk_l3]="are at L3, so it needs 'level:L3' (frostyard/core#233)"
+	[b12_bot_floor_word]="are at L1, so it needs 'level:L1,risk:high'"
+	[b12_bot_labels_expression]="the labels input holds a \${{ }} expression"
+	[b12_bot_labels_commented]='the create-pull-request step has no labels input'
+	[b12_bot_second_step]='must have exactly 1 peter-evans/create-pull-request step, found 2'
 	[b13_no_github_actions]='has no github-actions entry'
 	[b14_no_security_url]='does not link https://github.com/frostyard/bootc-debian/security'
 	[b15_codeowners]='.github/CODEOWNERS must not exist'
