@@ -638,12 +638,16 @@ END { exit !found }' "$bot" ||
 bot_path_level() { # bot_path_level PATH: sets bot_level to the PR level of PATH
 	local path=$1 glob level segment base ext bot_word rest
 	local -a bot_words
-	bot_level=$(jq -r '.default_level' "$risk")
+	bot_level=''
 	while IFS=$'\t' read -r glob level; do
 		if risk_path_matches "$glob" "$path"; then
-			if [[ $level < $bot_level ]]; then bot_level=$level; fi
+			if [[ -z $bot_level || $level < $bot_level ]]; then bot_level=$level; fi
 		fi
 	done < <(jq -r '.paths[] | select(type == "object") | [(.glob // ""), (.level // "")] | @tsv' "$risk")
+	# Rule D: the level is the strictest level of the matching globs, and
+	# default_level applies only when no glob matches. The default is not a
+	# floor: a matching L4 glob level beats a default of L3.
+	[[ -n $bot_level ]] || bot_level=$(jq -r '.default_level' "$risk")
 	# Rule G floor, an L1 word: the path in lower case, split at / . - _.
 	bot_words=()
 	rest=${path,,}

@@ -650,6 +650,35 @@ mut_b12_bot_labels_inline_ok() {
 	changed "$2" "$1" "$bot_wf"
 }
 
+# Rule D: the level is the strictest level of the matching globs, so a
+# download/** entry at L4 beats the default level of L3.
+mut_b12_bot_risk_l4_ok() {
+	jq '(.paths[] | select(.glob == "download/**")).level = "L4"' \
+		"$1/.github/risk-paths.json" >"$1/.github/risk-paths.json.new"
+	mv "$1/.github/risk-paths.json.new" "$1/.github/risk-paths.json"
+	sed -i -e 's@^            level:L1$@            level:L4@' \
+		-e '/^            risk:high$/d' "$1/$bot_wf"
+	changed "$2" "$1" "$bot_wf"
+}
+
+mut_b12_bot_risk_l4_labels_l3() {
+	jq '(.paths[] | select(.glob == "download/**")).level = "L4"' \
+		"$1/.github/risk-paths.json" >"$1/.github/risk-paths.json.new"
+	mv "$1/.github/risk-paths.json.new" "$1/.github/risk-paths.json"
+	sed -i -e 's@^            level:L1$@            level:L3@' \
+		-e '/^            risk:high$/d' "$1/$bot_wf"
+	changed "$2" "$1" "$bot_wf"
+}
+
+# Rule D: default_level applies only when no glob matches the path. The list
+# must keep its download/** entry, so the path under test is a new file that
+# no glob matches.
+mut_b12_bot_default_level() {
+	printf 'notes\n' >"$1/notes.txt"
+	sed -i 's@^          add-paths: download/checksums\.json$@          add-paths: notes.txt@' "$1/$bot_wf"
+	changed "$2" "$1" "$bot_wf"
+}
+
 # B13: Dependabot.
 mut_b13_no_github_actions() {
 	sed -i 's/^  - package-ecosystem: "github-actions"$/  - package-ecosystem: "npm"/' \
@@ -768,6 +797,8 @@ order=(
 	b12_bot_labels_expression
 	b12_bot_labels_commented
 	b12_bot_second_step
+	b12_bot_risk_l4_labels_l3
+	b12_bot_default_level
 	b13_no_github_actions
 	b14_no_security_url
 	b15_codeowners
@@ -779,6 +810,7 @@ order=(
 
 # Cases that mutate the tree and must pass.
 ok_order=(
+	b12_bot_risk_l4_ok
 	b12_bot_risk_l3_ok
 	b12_bot_labels_inline_ok
 	b6_caller_other_sha_comment_ok
@@ -860,6 +892,8 @@ declare -A expected=(
 	[b12_bot_labels_expression]="the labels input holds a \${{ }} expression"
 	[b12_bot_labels_commented]='the create-pull-request step has no labels input'
 	[b12_bot_second_step]='must have exactly 1 peter-evans/create-pull-request step, found 2'
+	[b12_bot_risk_l4_labels_l3]="are at L4, so it needs 'level:L4'"
+	[b12_bot_default_level]="are at L3, so it needs 'level:L3'"
 	[b13_no_github_actions]='has no github-actions entry'
 	[b14_no_security_url]='does not link https://github.com/frostyard/bootc-debian/security'
 	[b15_codeowners]='.github/CODEOWNERS must not exist'
