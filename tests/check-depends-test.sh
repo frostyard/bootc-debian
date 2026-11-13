@@ -235,6 +235,35 @@ else
 fi
 OBJDUMP_STUB_FAIL=''
 
+# 2 files: 1 ELF file whose sonames match Depends, and 1 whose header od cannot
+# read. A check that treats an unread header as "not ELF" skips that file and
+# passes on the sonames of the first.
+mkdir -p "$stubs/od"
+cat >"$stubs/od/od" <<'STUB'
+#!/usr/bin/env bash
+# Stub od for tests/check-depends-test.sh: it fails on the file that
+# OD_STUB_FAIL names, as od does on a file it cannot read, and runs the real
+# od on every other file.
+if [[ -n ${OD_STUB_FAIL:-} && $(basename "${!#}") == "$OD_STUB_FAIL" ]]; then
+	printf 'od: %s: Input/output error\n' "${!#}" >&2
+	exit 1
+fi
+PATH=$OD_REAL_PATH exec od "$@"
+STUB
+chmod +x "$stubs/od/od"
+odfail_root="$work/pkg/brokenod"
+new_root "$odfail_root" bootc
+add_elf "$odfail_root" good libc.so.6
+add_elf "$odfail_root" unreadable libzstd.so.1
+dpkg-deb --build --root-owner-group "$odfail_root" "$work/brokenod.deb" >/dev/null
+PATH="$stubs/od:$stub_path"
+export OD_REAL_PATH=$real_path OD_STUB_FAIL=unreadable
+run_case "a header that od cannot read fails the check" fail \
+	"not ok - bootc: od cannot read the header of" \
+	"$work/brokenod.deb" bootc "libc6"
+OD_STUB_FAIL=''
+PATH=$stub_path
+
 # A root that cannot be listed: find's exit status decides, not the empty list
 # it leaves behind, so the check must fail and must not pass on no sonames.
 no_root_status=0

@@ -56,7 +56,7 @@ join_names() { # join_names NAME...: prints the names sorted, separated by ", "
 
 depends_packages() { # depends_packages ROOT PACKAGE: appends to the caller's
 	# depends_derived[] the Debian packages that provide ROOT's NEEDED sonames
-	local root=$1 package=$2 file so out list status=0
+	local root=$1 package=$2 file so out magic list status=0
 	local -A sonames=()
 	depends_derived=()
 	# find and objdump run in this shell, and their exit status is checked: a
@@ -72,8 +72,15 @@ depends_packages() { # depends_packages ROOT PACKAGE: appends to the caller's
 	fi
 	while IFS= read -r -d '' file; do
 		# 7f454c46 is the ELF magic: objdump -p fails on anything else, and
-		# reads an archive member by member, so test it first.
-		[[ "$(od -An -tx1 -N4 "$file" | tr -d ' \n')" == 7f454c46 ]] || continue
+		# reads an archive member by member, so test it first. A header that
+		# od cannot read fails the check: skipping it as "not ELF" would lose
+		# that file's sonames.
+		if ! magic=$(od -An -tx1 -N4 "$file"); then
+			echo "not ok - ${package}: od cannot read the header of ${file}" >&2
+			status=1
+			break
+		fi
+		[[ "${magic//[[:space:]]/}" == 7f454c46 ]] || continue
 		if ! out=$(objdump -p "$file"); then
 			echo "not ok - ${package}: objdump -p ${file} failed" >&2
 			status=1
