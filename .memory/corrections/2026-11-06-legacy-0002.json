@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-06",
+  "scope": "baseline-check",
+  "correction": "The baseline check must require the risk list to list itself, and must tell a step action from a reusable workflow by the /.github/workflows/ path in its value, not by the position of uses:.",
+  "evidence": "bootc-debian#17, cross-review (openai/gpt-6.1-sol) of head 5552e6d, batch 2 findings 1 and 2",
+  "promoted_to": "tests/check-baseline-test.sh"
+}

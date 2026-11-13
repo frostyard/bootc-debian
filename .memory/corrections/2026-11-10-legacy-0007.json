@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-10",
+  "scope": "bot PR labels",
+  "correction": "A PR that GITHUB_TOKEN opens starts no pull_request_target run, so the PR triage caller never labels the bot PR; the bot sets its level labels at creation, and the baseline check holds them to the level of its add-paths.",
+  "evidence": "frostyard/bootc-debian#24 (bot PR, no level label); frostyard/core#233",
+  "promoted_to": "tests/check-baseline.sh"
+}

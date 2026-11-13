@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-10",
+  "scope": "bot PR labels",
+  "correction": "The level of a path is the strictest level of its matching globs, and default_level applies only when no glob matches, so the default is not a floor (core risk-paths spec rule D).",
+  "evidence": "frostyard/bootc-debian#25 cross-review (openai/gpt-6.1-sol) of head 4bec7af, finding 1",
+  "promoted_to": "tests/check-baseline.sh and tests/check-baseline-test.sh"
+}

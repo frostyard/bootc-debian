@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-09",
+  "scope": "required checks",
+  "correction": "A check that a ruleset requires must run on every PR type of the repository, including the GITHUB_TOKEN bot PR, which starts no pull_request workflow; so check-dependencies.yml dispatches ci.yml as well as build.yml.",
+  "evidence": "frostyard/bootc-debian#13 (a bot PR) shows Build (Debian Trixie) but no ci check; the required-check review for frostyard/core#222",
+  "promoted_to": "tests/check-baseline.sh"
+}

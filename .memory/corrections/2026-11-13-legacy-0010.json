@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-13",
+  "scope": "release check",
+  "correction": "The release check that gates publication belongs in lib/ with a test that runs it, not in a workflow run: block, which no gate and no test can read; every rule of it (name, arch, marker, stamp, upstream, size) needs a case that fails.",
+  "evidence": "bootc-debian#27, cross-review (openai/gpt-6.1-sol) of head 30ee3ef, finding D2",
+  "promoted_to": "tests/check-release-test.sh"
+}
