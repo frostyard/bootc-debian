@@ -13,10 +13,11 @@ lint: ## shellcheck and actionlint
 	shellcheck build.sh download/*.sh lib/*.sh tests/*.sh
 	actionlint
 
-test: ## The 2 checks with their tests, and the baseline with its negative tests
+test: ## The 3 checks with their tests, and the baseline with its negative tests
 	bash download/test-check-checksums.sh
 	bash download/check-checksums.sh
 	bash tests/check-depends-test.sh
+	bash tests/check-release-test.sh
 	tests/check-baseline.sh
 	tests/check-baseline-test.sh
 

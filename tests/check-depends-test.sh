@@ -27,7 +27,9 @@ stubs=$work/stubs
 mkdir -p "$stubs/objdump" "$stubs/dpkg"
 
 # The stub of objdump: it prints the NEEDED lines of FILE from FILE.needed, so a
-# case can give a package any sonames without a compiler and a linker.
+# case can give a package any sonames without a compiler and a linker. When
+# OBJDUMP_STUB_FAIL names 1 file of the payload, the stub fails on that file, as
+# objdump does on a file whose format it cannot read.
 cat >"$stubs/objdump/objdump" <<'STUB'
 #!/usr/bin/env bash
 # Stub objdump for tests/check-depends-test.sh: 1 NEEDED line for each line of
@@ -36,6 +38,10 @@ set -uo pipefail
 if [[ $# -ne 2 || $1 != -p ]]; then
 	printf 'objdump %s\n' "$*" >>"$OBJDUMP_STUB_LOG"
 	exit 99
+fi
+if [[ -n ${OBJDUMP_STUB_FAIL:-} && $(basename "$2") == "$OBJDUMP_STUB_FAIL" ]]; then
+	printf 'objdump: %s: file format not recognized\n' "$2" >&2
+	exit 1
 fi
 [[ -f $2.needed ]] || exit 0
 while IFS= read -r so; do
@@ -70,6 +76,7 @@ STUB
 chmod +x "$stubs/objdump/objdump" "$stubs/dpkg/dpkg"
 
 export DPKG_STUB_TABLE="$work/dpkg-S.table"
+export OBJDUMP_STUB_FAIL=''
 export DPKG_STUB_LOG="$work/dpkg-stub.log"
 export OBJDUMP_STUB_LOG="$work/objdump-stub.log"
 : >"$DPKG_STUB_TABLE"
@@ -85,21 +92,33 @@ provides() { # provides SONAME LINE: dpkg -S prints LINE for SONAME
 	printf '%s\t%s\n' "$1" "$2" >>"$DPKG_STUB_TABLE"
 }
 
-build_deb() { # build_deb DEB PACKAGE SO...: a .deb whose payload holds 1 ELF
-	# file (the 4 magic bytes and a name, which is all the check reads) that
-	# needs SO..., and 1 file that is not ELF
-	local deb=$1 package=$2 root
-	shift 2
-	root="$work/pkg/$(basename "$deb" .deb)"
+new_root() { # new_root ROOT PACKAGE: the payload directory of a .deb, with its
+	# control file and 1 file that is not ELF
+	local root=$1 package=$2
 	mkdir -p "$root/DEBIAN" "$root/usr/bin" "$root/usr/share/doc/$package"
 	chmod 0755 "$root" "$root/DEBIAN"
 	printf 'Package: %s\nVersion: 1.0-1\nArchitecture: amd64\nMaintainer: Test <t@example.org>\nDescription: test package\n A test package.\n' \
 		"$package" >"$root/DEBIAN/control"
-	printf '\177ELF\002\001\001\000not a real binary: the check reads the magic bytes only\n' \
-		>"$root/usr/bin/$package"
-	(($# == 0)) || printf '%s\n' "$@" >"$root/usr/bin/$package.needed"
 	printf 'This file is not ELF, so the check must ignore it.\n' \
 		>"$root/usr/share/doc/$package/README"
+}
+
+add_elf() { # add_elf ROOT NAME SO...: 1 ELF file in the payload (the 4 magic
+	# bytes and a name, which is all the check reads) that needs SO...
+	local root=$1 name=$2
+	shift 2
+	printf '\177ELF\002\001\001\000not a real binary: the check reads the magic bytes only\n' \
+		>"$root/usr/bin/$name"
+	(($# == 0)) || printf '%s\n' "$@" >"$root/usr/bin/$name.needed"
+}
+
+build_deb() { # build_deb DEB PACKAGE SO...: a .deb whose payload holds 1 ELF
+	# file that needs SO..., and 1 file that is not ELF
+	local deb=$1 package=$2 root
+	shift 2
+	root="$work/pkg/$(basename "$deb" .deb)"
+	new_root "$root" "$package"
+	add_elf "$root" "$package" "$@"
 	dpkg-deb --build --root-owner-group "$root" "$deb" >/dev/null
 }
 
@@ -195,6 +214,39 @@ run_case "a diversion line names no package" fail \
 
 reset_table
 provides libc.so.6 'libc6:amd64: /usr/lib/x86_64-linux-gnu/libc.so.6'
+# 2 ELF files: 1 whose sonames match Depends, and 1 that objdump cannot read. A
+# check that loses objdump's exit status passes on the sonames of the first.
+mixed_root="$work/pkg/brokenobjdump"
+new_root "$mixed_root" bootc
+add_elf "$mixed_root" good libc.so.6
+add_elf "$mixed_root" broken libzstd.so.1
+provides libzstd.so.1 'libzstd1:amd64: /usr/lib/x86_64-linux-gnu/libzstd.so.1'
+dpkg-deb --build --root-owner-group "$mixed_root" "$work/brokenobjdump.deb" >/dev/null
+OBJDUMP_STUB_FAIL=broken
+run_case "an objdump that fails on 1 ELF file fails the check" fail \
+	"not ok - bootc: objdump -p" \
+	"$work/brokenobjdump.deb" bootc "libc6"
+mixed_out=$(check_depends "$work/brokenobjdump.deb" bootc "libc6" 2>&1) || true
+if [[ $mixed_out == */usr/bin/broken\ failed* ]]; then
+	report "the objdump diagnostic names the file it could not read" 1 ""
+else
+	report "the objdump diagnostic names the file it could not read" 0 \
+		"output: ${mixed_out//$'\n'/ | }"
+fi
+OBJDUMP_STUB_FAIL=''
+
+# A root that cannot be listed: find's exit status decides, not the empty list
+# it leaves behind, so the check must fail and must not pass on no sonames.
+no_root_status=0
+no_root_out=$(check_depends_dir "$work/no-such-root" bootc "libc6" 2>&1) || no_root_status=$?
+if ((no_root_status != 0)) &&
+	[[ $no_root_out == *"not ok - bootc: find cannot list the files under $work/no-such-root"* ]]; then
+	report "a root that find cannot list fails the check" 1 ""
+else
+	report "a root that find cannot list fails the check" 0 \
+		"exit $no_root_status, output: ${no_root_out//$'\n'/ | }"
+fi
+
 run_case "a work directory keeps the extracted payload" pass \
 	"Depends match the packages its binaries need (1 packages)" \
 	"$work/matching.deb" bootc "libc6" "$work/keep"

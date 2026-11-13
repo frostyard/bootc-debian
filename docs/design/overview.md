@@ -113,7 +113,9 @@ here. A failing leg does not cancel the other one.
 
 1. checks that the build is exactly `bootc` and `libostree-1-1`, amd64, once
    `~deb13` and once `~deb14`, from 1 build stamp, with the same upstream
-   version on both codenames;
+   version on both codenames, in
+   [`lib/check-release.sh`](../../lib/check-release.sh), whose test is
+   [`tests/check-release-test.sh`](../../tests/check-release-test.sh);
 2. attests their build provenance;
 3. creates a GitHub release tagged
    `bootc-<version>-ostree-<version>-<UTC minute>` with the 4 `.deb` files

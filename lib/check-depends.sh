@@ -56,17 +56,35 @@ join_names() { # join_names NAME...: prints the names sorted, separated by ", "
 
 depends_packages() { # depends_packages ROOT PACKAGE: appends to the caller's
 	# depends_derived[] the Debian packages that provide ROOT's NEEDED sonames
-	local root=$1 package=$2 file so
+	local root=$1 package=$2 file so out list status=0
 	local -A sonames=()
 	depends_derived=()
+	# find and objdump run in this shell, and their exit status is checked: a
+	# listing or a read that failed keeps the sonames of the other files, and
+	# the check would then pass on a package it did not fully read. A
+	# temporary file holds find's NUL-separated output, which no variable can
+	# hold.
+	list=$(mktemp) || return 1
+	if ! find "$root" -type f -print0 >"$list"; then
+		echo "not ok - ${package}: find cannot list the files under ${root}" >&2
+		rm -f "$list"
+		return 1
+	fi
 	while IFS= read -r -d '' file; do
 		# 7f454c46 is the ELF magic: objdump -p fails on anything else, and
 		# reads an archive member by member, so test it first.
 		[[ "$(od -An -tx1 -N4 "$file" | tr -d ' \n')" == 7f454c46 ]] || continue
+		if ! out=$(objdump -p "$file"); then
+			echo "not ok - ${package}: objdump -p ${file} failed" >&2
+			status=1
+			break
+		fi
 		while IFS= read -r so; do
 			[[ -n "$so" ]] && sonames["$so"]=1
-		done < <(objdump -p "$file" | awk '/NEEDED/ { print $2 }')
-	done < <(find "$root" -type f -print0)
+		done < <(awk '/NEEDED/ { print $2 }' <<<"$out")
+	done <"$list"
+	rm -f "$list"
+	((status == 0)) || return 1
 	for so in "${!sonames[@]}"; do
 		# The library a package ships provides its own soname.
 		if [[ "$so" == libostree-1.so.1 && "$package" == libostree-1-1 ]]; then

@@ -29,9 +29,11 @@ Debian 14 (forky) packages, attests them, creates the GitHub release with all
    `bootc-<version>-ostree-<version>-<UTC minute>`, with exactly 4 `.deb`
    files. It fails, and releases nothing, unless the build holds `bootc` and
    `libostree-1-1`, amd64, each once `~deb13` and once `~deb14`, from 1 build
-   stamp, with the same upstream version on both codenames. A failing build
-   leg fails the release too: fix the forky build or its `Depends` list and
-   run again.
+   stamp, with the same upstream version on both codenames. The check is
+   [`lib/check-release.sh`](../../lib/check-release.sh); its test is
+   [`tests/check-release-test.sh`](../../tests/check-release-test.sh). A
+   failing build leg fails the release too: fix the forky build or its
+   `Depends` list and run again.
 5. The **Request APT publication** job sends `publish-deb` to
    frostyard/apt-publisher with the repository, the tag and the codenames
    `trixie` and `forky`. If it fails, nothing was published: re-run that job
