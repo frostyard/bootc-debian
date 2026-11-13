@@ -23,6 +23,11 @@
       "why": "update verification: the pinned upstream URLs and sha256 sums, and the verified download that refuses a mismatch"
     },
     {
+      "glob": "lib/**",
+      "level": "L1",
+      "why": "boot chain: the Depends check that holds each codename's Depends list to the built binaries"
+    },
+    {
       "glob": "tests/**",
       "level": "L2",
       "why": "governance: the baseline check and its negative tests, which hold the instruction surface, the workflow pins and the README to the baseline"

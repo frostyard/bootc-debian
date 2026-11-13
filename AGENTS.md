@@ -1,10 +1,10 @@
 # bootc-debian contributor context
 
-This repository builds the Debian trixie packages `bootc` and `libostree-1-1`
-from pinned upstream release tarballs, releases them on GitHub, and asks
-[frostyard/apt-publisher](https://github.com/frostyard/apt-publisher) to
-publish them to the Frostyard APT repository. Frostyard images install those
-packages instead of building bootc themselves. Start at
+This repository builds the Debian trixie and forky packages `bootc` and
+`libostree-1-1` from pinned upstream release tarballs, releases them on GitHub,
+and asks [frostyard/apt-publisher](https://github.com/frostyard/apt-publisher)
+to publish them to the Frostyard APT repository. Frostyard images install
+those packages instead of building bootc themselves. Start at
 [docs/README.md](docs/README.md).
 
 `AGENTS.md` is the canonical instruction file. `CLAUDE.md`, `GEMINI.md`,
@@ -16,7 +16,9 @@ file.
 
 | Path | What it is |
 | --- | --- |
-| [`build.sh`](build.sh) | Downloads and verifies the pinned tarballs, builds ostree, builds bootc against it offline, and packages both as `.deb` files into `dist/`. Refuses any codename but trixie. |
+| [`build.sh`](build.sh) | Downloads and verifies the pinned tarballs, builds ostree, builds bootc against it offline, and packages both as `.deb` files into `dist/`. Takes 1 `Depends` list for each codename it supports, and refuses any codename but trixie and forky. |
+| [`lib/check-depends.sh`](lib/check-depends.sh) | `check_depends DEB PACKAGE DEPENDS [WORKDIR]`: reads the `NEEDED` sonames of the ELF files in a built package, maps each to its Debian package with `dpkg -S`, and fails unless that set equals the `Depends` list. `build.sh` sources it; [`tests/check-depends-test.sh`](tests/check-depends-test.sh) is its test. |
+| [`lib/check-release.sh`](lib/check-release.sh) | `bash lib/check-release.sh DIST_DIR`: the release check of the `Release` job. Fails, with a `::error::` line, unless `DIST_DIR` holds exactly 4 packages: `bootc` and `libostree-1-1`, amd64, each once `~deb13` and once `~deb14`, from 1 build stamp, with the same upstream version on both codenames. Writes `tag=...` to `$GITHUB_OUTPUT`; [`tests/check-release-test.sh`](tests/check-release-test.sh) is its test. |
 | [`download/checksums.json`](download/checksums.json) | The upstream pins: version, release-tarball URL and sha256 for `ostree`, `bootc` and `bootc-vendor`. |
 | [`download/verified-download.sh`](download/verified-download.sh) | `verified_download KEY PATH`: fetches 1 pin and fails on a sha256 mismatch. `build.sh` sources it. |
 | [`download/check-checksums.sh`](download/check-checksums.sh) | Checks the shape of `download/checksums.json`: 3 pins, numeric versions, lowercase sha256 sums, GitHub release URLs, and one bootc version for `bootc` and `bootc-vendor`. |
@@ -25,6 +27,8 @@ file.
 | [`.github/workflows/check-dependencies.yml`](.github/workflows/check-dependencies.yml) | Weekly: checks for new ostree and bootc releases, updates `download/checksums.json` in a bot PR, and starts Build and ci on that branch. |
 | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | Runs `make ci` on pull requests, on a push to `main`, and on the dispatch that `check-dependencies.yml` sends to the bot branch. |
 | [`.github/workflows/risk-paths.yml`](.github/workflows/risk-paths.yml) | Calls core's `pr-triage.yml` reusable workflow, which adds the `level:L1` to `level:L4` label and `risk:high` at L1 and L2. |
+| [`tests/check-depends-test.sh`](tests/check-depends-test.sh) | The test of the `Depends` check: a matching list passes and each wrong one fails, with small `.deb` files and stubbed `dpkg` and `objdump`. |
+| [`tests/check-release-test.sh`](tests/check-release-test.sh) | The test of the release check: the 4 packages of 1 release pass and write the tag, and each wrong set fails with its message, with fake `.deb` files and a stubbed `dpkg-deb`. |
 | [`tests/`](tests/) | The baseline check and its negative tests. |
 | [`docs/`](docs/README.md) | The design, the runbooks, the ADRs, the specs and the plans. |
 
@@ -33,10 +37,11 @@ file.
 `make ci` is the gate; it runs `make verify`, which runs `make lint` and
 `make test`:
 
-- `make lint` runs `shellcheck build.sh download/*.sh tests/*.sh` and
-  `actionlint`.
+- `make lint` runs `shellcheck build.sh download/*.sh lib/*.sh
+  tests/*.sh` and `actionlint`.
 - `make test` runs `bash download/test-check-checksums.sh`,
-  `bash download/check-checksums.sh`, `tests/check-baseline.sh` and
+  `bash download/check-checksums.sh`, `bash tests/check-depends-test.sh`,
+  `bash tests/check-release-test.sh`, `tests/check-baseline.sh` and
   `tests/check-baseline-test.sh`.
 
 Run `mise install` first: `mise.toml` and `mise.lock` pin shellcheck,
@@ -51,16 +56,25 @@ on `PATH` (row B2 of core's baseline spec). CI runs `make ci` in
   agent.** That run creates a GitHub release and sends the `publish-deb`
   request to frostyard/apt-publisher, which publishes it. A person starts it;
   every other Build run publishes nothing.
-- **A release holds exactly `bootc` and `libostree-1-1`, amd64, `~deb13`, from
-  1 build.** The `Release` job in `build.yml` fails otherwise, and
-  apt-publisher publishes every `.deb` in the release. Never add a package, an
-  architecture or a codename to that job without an ADR.
-- **A version is `<upstream>-frostyard<UTC minute>~deb13`**, for example
+- **A release holds exactly 4 packages: `bootc` and `libostree-1-1`, amd64,
+  once `~deb13` and once `~deb14`, from 1 run with 1 build stamp.** The
+  `Release` job in `build.yml` fails otherwise
+  ([`lib/check-release.sh`](lib/check-release.sh)), and apt-publisher publishes
+  every `.deb` in the release. Never add a package, an architecture or a
+  codename to that job without an ADR ([ADR-0001](docs/adr/0001-release-trixie-and-forky-builds-together.md)).
+- **A version is `<upstream>-frostyard<UTC minute>~deb13` for trixie and
+  `<upstream>-frostyard<UTC minute>~deb14` for forky**, for example
   `1.16.8-frostyard202610040130~deb13`. The timestamp makes every rebuild sort
-  newer; apt-publisher publishes a `~debNN` version only to the codename for
-  Debian NN (core ADR-0055), so a forky build (`~deb14`) can sit beside it.
-- **`build.sh` refuses any codename but trixie.** Its `Depends` lists name
-  trixie's library packages, so a new codename needs new lists, not a rename.
+  newer; the `Build` workflow passes 1 `BUILD_STAMP` to both codename builds,
+  so 1 release holds 1 stamp. apt-publisher publishes a `~debNN` version only
+  to the codename for Debian NN (core ADR-0055).
+- **`build.sh` builds for trixie and forky, and refuses any other codename.**
+  Its `case` block holds 1 `Depends` list for each codename, because they name
+  that Debian release's library packages: forky ships `libgpgme45` where
+  trixie has `libgpgme11t64`. Its `Depends` check at the end of the script
+  fails the build unless each list equals the packages that the package's
+  `NEEDED` sonames map to, so a new codename or a library change needs the
+  list, not only a rename.
 - **The upstream pins change only in [`download/checksums.json`](download/checksums.json)**,
   and [`download/check-checksums.sh`](download/check-checksums.sh) checks the
   shape of that file. Never edit a version, a URL or a sha256 in `build.sh` or
@@ -77,11 +91,12 @@ on `PATH` (row B2 of core's baseline spec). CI runs `make ci` in
   bootc release can need a newer rustc to build, even when its own minimum
   supported Rust version does not change.
 - **Keep the file name `build.yml`, its `workflow_dispatch` trigger and the
-  job name `Build (Debian Trixie)`.** That job is a required status check, and
-  the bot workflow dispatches `build.yml` and `ci.yml` on the branch
-  `auto-update-checksums` with `gh workflow run`, because a `GITHUB_TOKEN`
-  pull request starts no workflow. `ci` is the gate check, so it needs its own
-  `workflow_dispatch` trigger.
+  job name `Build (Debian Trixie)`.** That job name is a required status
+  check, and it comes from the matrix leg whose `title` is `Trixie`; the forky
+  leg is `Build (Debian Forky)`. The bot workflow dispatches `build.yml` and
+  `ci.yml` on the branch `auto-update-checksums` with `gh workflow run`,
+  because a `GITHUB_TOKEN` pull request starts no workflow. `ci` is the gate
+  check, so it needs its own `workflow_dispatch` trigger.
 - **Every action is pinned to a full commit SHA with a `# vX.Y.Z` comment**
   (a frostyard/core reusable workflow: `# frostyard/core main, YYYY-MM-DD`,
   because core has no release tags), **every checkout sets

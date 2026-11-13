@@ -48,18 +48,47 @@ jobs:
         run: '"$RUNNER_TEMP/actionlint" -color'
 
       - name: shellcheck
-        run: shellcheck build.sh download/*.sh
+        run: shellcheck build.sh download/*.sh lib/*.sh
 
       - name: Check download/checksums.json
         run: |
           bash download/test-check-checksums.sh
           bash download/check-checksums.sh
 
-  build:
-    name: Build (Debian Trixie)
+  # 1 UTC minute stamp for both codename builds. Every version and the tag end
+  # in it, so 1 release holds 1 build stamp (build.sh takes it as
+  # BUILD_STAMP).
+  stamp:
+    name: Build stamp
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      stamp: ${{ steps.stamp.outputs.stamp }}
+
+    steps:
+      - name: Stamp
+        id: stamp
+        run: echo "stamp=$(date -u +%Y%m%d%H%M)" >>"$GITHUB_OUTPUT"
+
+  # 1 leg for each Debian release, in parallel. The leg's container picks its
+  # version marker and its Depends lists in build.sh (~deb13 for trixie,
+  # ~deb14 for forky), and its job name is the required status check: keep
+  # `Build (Debian Trixie)` as it is.
+  build:
+    name: Build (Debian ${{ matrix.title }})
+    needs: stamp
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        codename: [trixie, forky]
+        include:
+          - codename: trixie
+            title: Trixie
+          - codename: forky
+            title: Forky
     container:
-      image: debian:trixie
+      image: debian:${{ matrix.codename }}
     env:
       HOME: "/root"
 
@@ -70,6 +99,8 @@ jobs:
           persist-credentials: false
 
       - name: Build ostree and bootc packages
+        env:
+          BUILD_STAMP: ${{ needs.stamp.outputs.stamp }}
         run: bash build.sh
 
       - name: Verify packages
@@ -82,7 +113,7 @@ jobs:
       - name: Upload packages
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: debian-packages
+          name: debian-packages-${{ matrix.codename }}
           path: dist/*.deb
 
   # Only a manual run on main releases. The release's .deb assets are
@@ -104,59 +135,31 @@ jobs:
       tag: ${{ steps.check.outputs.tag }}
 
     steps:
+      # lib/check-release.sh holds the release check, so the job needs the
+      # repository, not only the artifacts.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       - name: Download packages
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: debian-packages
+          pattern: debian-packages-*
+          merge-multiple: true
           path: ./dist
 
-      # apt-publisher publishes every .deb in the release, and bootc-debian is
-      # registered for trixie only, in the image component. The release must
-      # therefore hold exactly this run's Debian 13 amd64 bootc and
-      # libostree-1-1, and nothing else.
+      # apt-publisher publishes every .deb in the release, and it routes a
+      # ~debNN version only to the codename for Debian NN (core ADR-0055). The
+      # release must therefore hold exactly this run's Debian 13 and Debian 14
+      # amd64 builds of bootc and libostree-1-1
+      # (docs/adr/0001-release-trixie-and-forky-builds-together.md): 1 package for
+      # each name and codename, from 1 build stamp, with the same upstream
+      # version on both codenames, and nothing else. The check, its messages and
+      # its test are in lib/check-release.sh and tests/check-release-test.sh.
       - name: Check the packages
         id: check
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          want="bootc libostree-1-1"
-          names=() stamp=""
-          declare -A upstream=()
-          for deb in dist/*.deb; do
-            name=$(dpkg-deb -f "$deb" Package)
-            version=$(dpkg-deb -f "$deb" Version)
-            arch=$(dpkg-deb -f "$deb" Architecture)
-            size=$(stat -c %s "$deb")
-            if [[ $arch != amd64 ]]; then
-              echo "::error::$deb is built for $arch, not amd64"
-              exit 1
-            fi
-            if [[ ! $version =~ ^([0-9]+(\.[0-9]+)*)-frostyard([0-9]{12})~deb13$ ]]; then
-              echo "::error::$deb has version $version, which is not a Debian 13 build of this repository"
-              exit 1
-            fi
-            if [[ -n $stamp && ${BASH_REMATCH[3]} != "$stamp" ]]; then
-              echo "::error::$deb was built at ${BASH_REMATCH[3]}, but another package at $stamp"
-              exit 1
-            fi
-            if [[ $(basename "$deb") != "${name}_${version}_${arch}.deb" ]]; then
-              echo "::error::$deb is not named ${name}_${version}_${arch}.deb"
-              exit 1
-            fi
-            if ((size >= 2147483648)); then
-              echo "::error::$deb is $size bytes; GitHub release assets must be under 2 GiB"
-              exit 1
-            fi
-            stamp=${BASH_REMATCH[3]}
-            upstream[$name]=${BASH_REMATCH[1]}
-            names+=("$name")
-          done
-          got=$(printf '%s\n' "${names[@]}" | sort | paste -sd ' ')
-          if [[ $got != "$want" ]]; then
-            echo "::error::expected the packages: $want; found: ${got:-none}"
-            exit 1
-          fi
-          echo "tag=bootc-${upstream[bootc]}-ostree-${upstream[libostree-1-1]}-$stamp" >>"$GITHUB_OUTPUT"
+        run: bash lib/check-release.sh dist
 
       # Binds each .deb to this workflow run. Verify with
       # gh attestation verify FILE --repo frostyard/bootc-debian --source-ref refs/heads/main
@@ -168,8 +171,8 @@ jobs:
       # gh uploads the assets to a draft and publishes it once all are
       # attached, so apt-publisher never sees a partial release. An existing
       # release fails this step instead of being changed. GitHub lists the
-      # assets with `.deb13` in place of `~deb13`; the packages inside keep
-      # their versions.
+      # assets with `.deb13` and `.deb14` in place of `~deb13` and `~deb14`;
+      # the packages inside keep their versions.
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -178,14 +181,16 @@ jobs:
         run: |
           gh release create "$TAG" dist/*.deb --target "$GITHUB_SHA" --latest \
             --title "$TAG" \
-            --notes "Debian 13 (trixie) amd64 build of main at $GITHUB_SHA. frostyard/apt-publisher publishes it to https://repository.frostyard.org/debian/ (trixie, component image)."
+            --notes "Debian 13 (trixie) and Debian 14 (forky) amd64 builds of main at $GITHUB_SHA. frostyard/apt-publisher publishes them to https://repository.frostyard.org/debian/ (trixie and forky, component image)."
 
   # Not continue-on-error: if the request fails, nothing was published and
   # the run must fail. Re-running this job alone requests the same release
-  # again. The packages carry ~deb13, so apt-publisher routes them to trixie;
-  # naming trixie makes it refuse anything else in the release. The payload
-  # names no component: apt-publisher puts this repository's packages in the
-  # component it is registered for, image (core ADR-0059).
+  # again. apt-publisher routes a ~debNN version only to the codename for
+  # Debian NN (core ADR-0055), so the ~deb13 packages go to trixie and the
+  # ~deb14 packages to forky; naming both codenames makes it refuse anything
+  # else in the release. The payload names no component: apt-publisher puts
+  # this repository's packages in the component it is registered for, image
+  # (core ADR-0059).
   request-publication:
     name: Request APT publication
     runs-on: ubuntu-latest
@@ -200,4 +205,4 @@ jobs:
           token: ${{ secrets.APT_PUBLISH_TOKEN }}
           repository: frostyard/apt-publisher
           event-type: publish-deb
-          client-payload: '{"repo": "${{ github.repository }}", "tag": "${{ needs.release.outputs.tag }}", "codenames": ["trixie"]}'
+          client-payload: '{"repo": "${{ github.repository }}", "tag": "${{ needs.release.outputs.tag }}", "codenames": ["trixie", "forky"]}'
