@@ -48,7 +48,7 @@ jobs:
         run: '"$RUNNER_TEMP/actionlint" -color'
 
       - name: shellcheck
-        run: shellcheck build.sh download/*.sh
+        run: shellcheck build.sh download/*.sh lib/*.sh
 
       - name: Check download/checksums.json
         run: |

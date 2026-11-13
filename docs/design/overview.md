@@ -52,11 +52,14 @@ container it runs in, and refuses any codename but trixie and forky: it holds
 release's library packages. Forky ships gpgme 2 (`libgpgme.so.45`, package
 `libgpgme45`) where trixie has gpgme 1 (`libgpgme.so.11`, package
 `libgpgme11t64`); `bootc` needs the same list on both codenames. At the end of
-the build, a check reads the `NEEDED` sonames of every ELF file in each
-package, maps each soname to its Debian package with `dpkg -S` and fails
-unless the result equals that package's `Depends` list, so a wrong or stale
-list fails the build instead of shipping (see
-[ADR-0001](../adr/0001-release-trixie-and-forky-builds-together.md)).
+the build, the check in [`lib/check-depends.sh`](../../lib/check-depends.sh)
+reads the `NEEDED` sonames of every ELF file in each package, maps each soname
+to its Debian package with `dpkg -S` and fails unless the result equals that
+package's `Depends` list, so a wrong or stale list fails the build instead of
+shipping (see
+[ADR-0001](../adr/0001-release-trixie-and-forky-builds-together.md)). Its test,
+[`tests/check-depends-test.sh`](../../tests/check-depends-test.sh), builds small
+packages and proves that a wrong list fails.
 
 ### Versions
 

@@ -17,6 +17,7 @@ file.
 | Path | What it is |
 | --- | --- |
 | [`build.sh`](build.sh) | Downloads and verifies the pinned tarballs, builds ostree, builds bootc against it offline, and packages both as `.deb` files into `dist/`. Takes 1 `Depends` list for each codename it supports, and refuses any codename but trixie and forky. |
+| [`lib/check-depends.sh`](lib/check-depends.sh) | `check_depends DEB PACKAGE DEPENDS [WORKDIR]`: reads the `NEEDED` sonames of the ELF files in a built package, maps each to its Debian package with `dpkg -S`, and fails unless that set equals the `Depends` list. `build.sh` sources it; [`tests/check-depends-test.sh`](tests/check-depends-test.sh) is its test. |
 | [`download/checksums.json`](download/checksums.json) | The upstream pins: version, release-tarball URL and sha256 for `ostree`, `bootc` and `bootc-vendor`. |
 | [`download/verified-download.sh`](download/verified-download.sh) | `verified_download KEY PATH`: fetches 1 pin and fails on a sha256 mismatch. `build.sh` sources it. |
 | [`download/check-checksums.sh`](download/check-checksums.sh) | Checks the shape of `download/checksums.json`: 3 pins, numeric versions, lowercase sha256 sums, GitHub release URLs, and one bootc version for `bootc` and `bootc-vendor`. |
@@ -25,6 +26,7 @@ file.
 | [`.github/workflows/check-dependencies.yml`](.github/workflows/check-dependencies.yml) | Weekly: checks for new ostree and bootc releases, updates `download/checksums.json` in a bot PR, and starts Build and ci on that branch. |
 | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | Runs `make ci` on pull requests, on a push to `main`, and on the dispatch that `check-dependencies.yml` sends to the bot branch. |
 | [`.github/workflows/risk-paths.yml`](.github/workflows/risk-paths.yml) | Calls core's `pr-triage.yml` reusable workflow, which adds the `level:L1` to `level:L4` label and `risk:high` at L1 and L2. |
+| [`tests/check-depends-test.sh`](tests/check-depends-test.sh) | The test of the `Depends` check: a matching list passes and each wrong one fails, with small `.deb` files and stubbed `dpkg` and `objdump`. |
 | [`tests/`](tests/) | The baseline check and its negative tests. |
 | [`docs/`](docs/README.md) | The design, the runbooks, the ADRs, the specs and the plans. |
 
@@ -33,11 +35,11 @@ file.
 `make ci` is the gate; it runs `make verify`, which runs `make lint` and
 `make test`:
 
-- `make lint` runs `shellcheck build.sh download/*.sh tests/*.sh` and
-  `actionlint`.
+- `make lint` runs `shellcheck build.sh download/*.sh lib/*.sh
+  tests/*.sh` and `actionlint`.
 - `make test` runs `bash download/test-check-checksums.sh`,
-  `bash download/check-checksums.sh`, `tests/check-baseline.sh` and
-  `tests/check-baseline-test.sh`.
+  `bash download/check-checksums.sh`, `bash tests/check-depends-test.sh`,
+  `tests/check-baseline.sh` and `tests/check-baseline-test.sh`.
 
 Run `mise install` first: `mise.toml` and `mise.lock` pin shellcheck,
 actionlint and jq (core ADR-0043). The baseline check reads
