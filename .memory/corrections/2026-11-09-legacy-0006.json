@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-09",
+  "scope": "required checks",
+  "correction": "A guard that looks for a workflow step must read the step's run: key at the step indent of its job and skip block scalars; a text match also accepts the same words in a PR body (body: |) after the real step is gone.",
+  "evidence": "frostyard/bootc-debian#23 cross-review (openai/gpt-6.1-sol) of the bot-dispatch fix commit, finding 1",
+  "promoted_to": "tests/check-baseline.sh and tests/check-baseline-test.sh"
+}

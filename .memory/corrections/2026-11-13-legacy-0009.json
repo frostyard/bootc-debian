@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-13",
+  "scope": "depends check",
+  "correction": "A command whose output a check reads must run in the parent shell with its exit status checked: inside a process substitution the status is lost, so 1 failed objdump or find left the check passing on the sonames of the other files; an od header read that fails must fail the check too, not skip the file as not ELF.",
+  "evidence": "bootc-debian#27, cross-review (openai/gpt-6.1-sol) of head 30ee3ef, finding D1",
+  "promoted_to": "tests/check-depends-test.sh"
+}

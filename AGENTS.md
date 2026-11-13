@@ -46,7 +46,7 @@ file.
 
 Run `mise install` first: `mise.toml` and `mise.lock` pin shellcheck,
 actionlint and jq (core ADR-0043). The baseline check reads
-`.memory/corrections.jsonl` with a small Python program, so `python3` must be
+the `.memory/corrections/` records with a small Python program, so `python3` must be
 on `PATH` (row B2 of core's baseline spec). CI runs `make ci` in
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
@@ -113,9 +113,8 @@ on `PATH` (row B2 of core's baseline spec). CI runs `make ci` in
   `ready-for-human` when the head moves after the label (core ADR-0077). The PR
   body names each matched path and why the change is safe.
 - **A blocking review point adds a guard:** a test that fails without the fix,
-  or a rule here when no test can catch it, plus 1 line in
-  [`.memory/corrections.jsonl`](.memory/corrections.jsonl)
-  ([`.memory/README.md`](.memory/README.md)).
+  or a rule here when no test can catch it, plus 1 record file in
+  `.memory/corrections/` ([`.memory/README.md`](.memory/README.md)).
 - **PR text speaks for the repository.** A title, a body, a comment and a
   commit message give the reason in this repository's terms and link the ADR,
   the spec or the issue that applies. Who decided and when stays off the PR.
