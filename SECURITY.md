@@ -1,7 +1,7 @@
 # Security policy
 
-bootc-debian is a public repository. It builds the Debian trixie packages
-`bootc` and `libostree-1-1` and publishes them to the Frostyard APT
+bootc-debian is a public repository. It builds the Debian trixie and forky
+packages `bootc` and `libostree-1-1` and publishes them to the Frostyard APT
 repository at `https://repository.frostyard.org/debian/`, which Frostyard
 images install bootc from.
 

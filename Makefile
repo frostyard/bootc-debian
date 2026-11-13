@@ -20,5 +20,8 @@ test: ## The checksum check with its test, and the baseline with its negative te
 	tests/check-baseline-test.sh
 
 # Not part of the gate: it builds the packages and takes several minutes.
-build: ## Build the packages locally in debian:trixie, into dist/
-	docker run --rm -v "$(CURDIR)":/src -w /src debian:trixie bash build.sh
+# CODENAME=trixie (the default) or CODENAME=forky picks the Debian release.
+CODENAME ?= trixie
+
+build: ## Build the packages locally in debian:trixie or debian:forky, into dist/
+	docker run --rm -v "$(CURDIR)":/src -w /src debian:$(CODENAME) bash build.sh

@@ -146,7 +146,8 @@ jobs:
             Merging this PR publishes nothing. It builds `main` again. To
             release, run **Build** on `main` manually (`workflow_dispatch`):
             that run creates a GitHub release and asks
-            frostyard/apt-publisher to publish it (trixie, component `image`).
+            frostyard/apt-publisher to publish it (trixie and forky, component
+            `image`).
           branch: ${{ env.BOT_BRANCH }}
           delete-branch: true
           # GitHub starts no pull_request_target run for a PR that

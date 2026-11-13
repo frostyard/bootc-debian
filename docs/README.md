@@ -18,8 +18,10 @@ Docs are split by the question they answer:
 
 ### Decisions (ADRs)
 
-No local ADR yet. A decision about this repository gets an ADR here, with the
-next free number, started from [adr/TEMPLATE.md](adr/TEMPLATE.md).
+- [0001-release-trixie-and-forky-builds-together.md](adr/0001-release-trixie-and-forky-builds-together.md): 1 run builds the Debian 13 (trixie) packages and the Debian 14 (forky) packages with 1 build stamp, and 1 release publishes both codenames.
+
+A new decision gets an ADR here, with the next free number, started from
+[adr/TEMPLATE.md](adr/TEMPLATE.md).
 
 ### Design
 

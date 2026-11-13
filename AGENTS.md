@@ -1,10 +1,10 @@
 # bootc-debian contributor context
 
-This repository builds the Debian trixie packages `bootc` and `libostree-1-1`
-from pinned upstream release tarballs, releases them on GitHub, and asks
-[frostyard/apt-publisher](https://github.com/frostyard/apt-publisher) to
-publish them to the Frostyard APT repository. Frostyard images install those
-packages instead of building bootc themselves. Start at
+This repository builds the Debian trixie and forky packages `bootc` and
+`libostree-1-1` from pinned upstream release tarballs, releases them on GitHub,
+and asks [frostyard/apt-publisher](https://github.com/frostyard/apt-publisher)
+to publish them to the Frostyard APT repository. Frostyard images install
+those packages instead of building bootc themselves. Start at
 [docs/README.md](docs/README.md).
 
 `AGENTS.md` is the canonical instruction file. `CLAUDE.md`, `GEMINI.md`,
@@ -16,7 +16,7 @@ file.
 
 | Path | What it is |
 | --- | --- |
-| [`build.sh`](build.sh) | Downloads and verifies the pinned tarballs, builds ostree, builds bootc against it offline, and packages both as `.deb` files into `dist/`. Refuses any codename but trixie. |
+| [`build.sh`](build.sh) | Downloads and verifies the pinned tarballs, builds ostree, builds bootc against it offline, and packages both as `.deb` files into `dist/`. Takes 1 `Depends` list for each codename it supports, and refuses any codename but trixie and forky. |
 | [`download/checksums.json`](download/checksums.json) | The upstream pins: version, release-tarball URL and sha256 for `ostree`, `bootc` and `bootc-vendor`. |
 | [`download/verified-download.sh`](download/verified-download.sh) | `verified_download KEY PATH`: fetches 1 pin and fails on a sha256 mismatch. `build.sh` sources it. |
 | [`download/check-checksums.sh`](download/check-checksums.sh) | Checks the shape of `download/checksums.json`: 3 pins, numeric versions, lowercase sha256 sums, GitHub release URLs, and one bootc version for `bootc` and `bootc-vendor`. |
@@ -51,16 +51,24 @@ on `PATH` (row B2 of core's baseline spec). CI runs `make ci` in
   agent.** That run creates a GitHub release and sends the `publish-deb`
   request to frostyard/apt-publisher, which publishes it. A person starts it;
   every other Build run publishes nothing.
-- **A release holds exactly `bootc` and `libostree-1-1`, amd64, `~deb13`, from
-  1 build.** The `Release` job in `build.yml` fails otherwise, and
-  apt-publisher publishes every `.deb` in the release. Never add a package, an
-  architecture or a codename to that job without an ADR.
-- **A version is `<upstream>-frostyard<UTC minute>~deb13`**, for example
+- **A release holds exactly 4 packages: `bootc` and `libostree-1-1`, amd64,
+  once `~deb13` and once `~deb14`, from 1 run with 1 build stamp.** The
+  `Release` job in `build.yml` fails otherwise, and apt-publisher publishes
+  every `.deb` in the release. Never add a package, an architecture or a
+  codename to that job without an ADR ([ADR-0001](docs/adr/0001-release-trixie-and-forky-builds-together.md)).
+- **A version is `<upstream>-frostyard<UTC minute>~deb13` for trixie and
+  `<upstream>-frostyard<UTC minute>~deb14` for forky**, for example
   `1.16.8-frostyard202610040130~deb13`. The timestamp makes every rebuild sort
-  newer; apt-publisher publishes a `~debNN` version only to the codename for
-  Debian NN (core ADR-0055), so a forky build (`~deb14`) can sit beside it.
-- **`build.sh` refuses any codename but trixie.** Its `Depends` lists name
-  trixie's library packages, so a new codename needs new lists, not a rename.
+  newer; the `Build` workflow passes 1 `BUILD_STAMP` to both codename builds,
+  so 1 release holds 1 stamp. apt-publisher publishes a `~debNN` version only
+  to the codename for Debian NN (core ADR-0055).
+- **`build.sh` builds for trixie and forky, and refuses any other codename.**
+  Its `case` block holds 1 `Depends` list for each codename, because they name
+  that Debian release's library packages: forky ships `libgpgme45` where
+  trixie has `libgpgme11t64`. Its `Depends` check at the end of the script
+  fails the build unless each list equals the packages that the package's
+  `NEEDED` sonames map to, so a new codename or a library change needs the
+  list, not only a rename.
 - **The upstream pins change only in [`download/checksums.json`](download/checksums.json)**,
   and [`download/check-checksums.sh`](download/check-checksums.sh) checks the
   shape of that file. Never edit a version, a URL or a sha256 in `build.sh` or
@@ -77,11 +85,12 @@ on `PATH` (row B2 of core's baseline spec). CI runs `make ci` in
   bootc release can need a newer rustc to build, even when its own minimum
   supported Rust version does not change.
 - **Keep the file name `build.yml`, its `workflow_dispatch` trigger and the
-  job name `Build (Debian Trixie)`.** That job is a required status check, and
-  the bot workflow dispatches `build.yml` and `ci.yml` on the branch
-  `auto-update-checksums` with `gh workflow run`, because a `GITHUB_TOKEN`
-  pull request starts no workflow. `ci` is the gate check, so it needs its own
-  `workflow_dispatch` trigger.
+  job name `Build (Debian Trixie)`.** That job name is a required status
+  check, and it comes from the matrix leg whose `title` is `Trixie`; the forky
+  leg is `Build (Debian Forky)`. The bot workflow dispatches `build.yml` and
+  `ci.yml` on the branch `auto-update-checksums` with `gh workflow run`,
+  because a `GITHUB_TOKEN` pull request starts no workflow. `ci` is the gate
+  check, so it needs its own `workflow_dispatch` trigger.
 - **Every action is pinned to a full commit SHA with a `# vX.Y.Z` comment**
   (a frostyard/core reusable workflow: `# frostyard/core main, YYYY-MM-DD`,
   because core has no release tags), **every checkout sets
