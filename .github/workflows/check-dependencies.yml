@@ -17,6 +17,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      actions: write
     outputs:
       operation: ${{ steps.cpr.outputs.pull-request-operation }}
 
@@ -151,8 +152,8 @@ jobs:
           branch: ${{ env.BOT_BRANCH }}
           delete-branch: true
           # GitHub starts no pull_request_target run for a PR that
-          # GITHUB_TOKEN opens, so the PR triage caller never labels this PR
-          # (frostyard/core#233). The bot labels it here instead. add-paths
+          # GITHUB_TOKEN opens (frostyard/core#233). Seed the labels here;
+          # the dispatch above runs PR triage (core ADR-0087). add-paths
           # limits the commit to download/checksums.json, so the PR level is
           # the level of that file in .github/risk-paths.json: L1
           # (download/**), which also takes risk:high (core
@@ -162,6 +163,13 @@ jobs:
           labels: |
             level:L1
             risk:high
+
+      - name: Run PR triage
+        if: steps.cpr.outputs.pull-request-operation == 'created' || steps.cpr.outputs.pull-request-operation == 'updated'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
+        run: gh workflow run pr-triage-dispatch.yml --repo "$GITHUB_REPOSITORY" -f pr="$PR_NUMBER"
 
   # Start Build and ci on the bot branch when this run created or changed
   # the bot PR. A GITHUB_TOKEN workflow_dispatch event starts a run, unlike a

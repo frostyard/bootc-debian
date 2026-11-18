@@ -1,0 +1,21 @@
+name: PR triage dispatch
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: The number of the pull request to triage
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  pr-triage:
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: frostyard/core/.github/workflows/pr-triage.yml@57f3b9bd39e123be22c280aff0ba233f471a658a # frostyard/core main, 2026-11-18
+    with:
+      pr: ${{ inputs.pr }}
+      dependabot-shadow: false
