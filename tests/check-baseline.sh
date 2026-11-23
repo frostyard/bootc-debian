@@ -192,15 +192,19 @@ for pin in mise.toml mise.lock; do
 	[[ -f $ROOT/$pin ]] || fail "$pin is missing"
 done
 
-# B5: SHA-pinned actions, least-privilege permissions, no persisted
-# credentials (core ADR-0021). A step action pins a full SHA with the version
-# in a comment; a job-level reusable workflow pins a full SHA with a comment.
-# The scan tells them apart by the value, not by the position of the uses:
-# line: a reusable workflow names a path with /.github/workflows/ in it.
+# B5: SHA pins, least privilege, no persisted credentials (core ADR-0021, ADR-0088, ADR-0090).
+# Workflows and local action metadata require version comments (core accepts any comment)
+# and 1 SHA per action across all pin files; tests read pins from the copied workflows.
 workflow_files=("$ROOT"/.github/workflows/*.yml "$ROOT"/.github/workflows/*.yaml)
 ((${#workflow_files[@]})) || fail "no workflow files in .github/workflows"
-for f in "${workflow_files[@]}"; do
-	name=.github/workflows/$(basename "$f")
+pin_files=("${workflow_files[@]}")
+if [[ -d $ROOT/.github/actions ]]; then
+	while IFS= read -r -d '' f; do
+		pin_files+=("$f")
+	done < <(find "$ROOT/.github/actions" -type f \( -name action.yml -o -name action.yaml \) -print0 | sort -z)
+fi
+for f in "${pin_files[@]}"; do
+	name=${f#"$ROOT/"}
 	problem=$(awk -v name="$name" '
 		/^[[:space:]]*(#|$)/ { next }
 		!/(^|[[:space:]-])uses:[[:space:]]/ { next }
@@ -208,7 +212,6 @@ for f in "${workflow_files[@]}"; do
 			value = $0
 			sub(/^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*/, "", value)
 			if (value ~ /^\.\//) next
-			step = (value !~ /\/\.github\/workflows\//)
 			ref = value
 			sub(/^.*@/, "", ref)
 			sha = ref
@@ -221,12 +224,19 @@ for f in "${workflow_files[@]}"; do
 				print name ":" FNR ": the pinned action has no version comment: " value
 				next
 			}
-			if (step && ref !~ /#[[:space:]]+v[0-9]/) {
-				print name ":" FNR ": the step action comment must name the version (# vX.Y.Z): " value
+			action = value
+			sub(/@.*$/, "", action)
+			comment = substr(ref, length(sha) + 1)
+			if (action !~ /^frostyard\/core\/\.github\/workflows\// &&
+			    comment !~ /^[[:space:]]+# v[0-9]+\.[0-9]+(\.[0-9]+)?[[:space:]]*$/) {
+				print name ":" FNR ": the pin comment must be # vX.Y.Z or # vX.Y (core ADR-0090): " value
 			}
 		}' "$f") || fail "$name: the uses scan failed"
 	[[ -z $problem ]] || fail "${problem%%$'\n'*}"
+done
 
+for f in "${workflow_files[@]}"; do
+	name=${f#"$ROOT/"}
 	problem=$(awk -v name="$name" '
 		/^permissions:/ {
 			seen = 1
@@ -292,8 +302,33 @@ for f in "${workflow_files[@]}"; do
 		END { if (in_item && has_checkout && !has_persist && !reported) print name ":" start ": the checkout step does not set persist-credentials: false" }
 	' "$f") || fail "$name: the checkout scan failed"
 	[[ -z $problem ]] || fail "${problem%%$'\n'*}"
-
 done
+
+# Compare full pins repository-wide, retaining the first location for each action.
+problem=$(awk -v root="$ROOT/" '
+	/^[[:space:]]*(#|$)/ { next }
+	!/(^|[[:space:]-])uses:[[:space:]]/ { next }
+	{
+		value = $0
+		sub(/^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*/, "", value)
+		if (value ~ /^\.\// || value !~ /@/) next
+		action = value
+		sub(/@.*$/, "", action)
+		sha = value
+		sub(/^.*@/, "", sha)
+		sub(/[[:space:]].*$/, "", sha)
+		if (sha !~ /^[0-9a-f]+$/ || length(sha) != 40) next
+		name = substr(FILENAME, length(root) + 1)
+		if (action in pins && pins[action] != sha) {
+			print action " has more than 1 SHA across the workflows and actions: " places[action] " " pins[action] ", " name ":" FNR " " sha
+			exit
+		}
+		if (!(action in pins)) {
+			pins[action] = sha
+			places[action] = name ":" FNR
+		}
+	}' "${pin_files[@]}") || fail "the repository-wide uses scan failed"
+[[ -z $problem ]] || fail "$problem"
 
 # ---- risk-path glob (start) ----
 # A port of core's matchGlob (frostyard/core scripts/lib/risk-paths.mjs, core
