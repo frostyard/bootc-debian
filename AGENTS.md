@@ -87,6 +87,19 @@ on `PATH` (row B2 of core's baseline spec). CI runs `make ci` in
   file plus `risk:high` at L1 and L2. [`tests/check-baseline.sh`](tests/check-baseline.sh)
   checks the labels against the level that `.github/risk-paths.json` gives the
   add-paths, so a list change that moves that level must change them too.
+- **Before the owner reports a bot version PR for review, its body gets a
+  `## Risk paths` section.** The bot's body only explains the automation, and
+  `download/checksums.json` is an L1 risk path whose PR body must say why the
+  change is safe. The owner adds the section under the bot's text (the bot
+  rewrites the body only when it pushes a new head) and names: the matched
+  path and its rule (`download/**`); the scope (which pins move, from which
+  version to which); the upstream release, and each security advisory it
+  fixes; the checksum evidence (each new URL downloaded and hashed, and the
+  sum equal to the pin and to the asset digest on the upstream release); and
+  CI at the head (Lint, both codename builds and `ci`, read from the head
+  commit's check runs, because the dispatched runs do not show in the PR's
+  checks). No test can read a PR body before review, so this rule is the
+  guard ([`.memory/corrections/2026-11-24-pr-37-version-pr-risk-section.json`](.memory/corrections/2026-11-24-pr-37-version-pr-risk-section.json)).
 - **On a bootc bump, check `RUST_VERSION` in [`build.sh`](build.sh).** A new
   bootc release can need a newer rustc to build, even when its own minimum
   supported Rust version does not change.

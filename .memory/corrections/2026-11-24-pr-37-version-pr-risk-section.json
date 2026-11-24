@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-24",
+  "scope": "bot version PR",
+  "correction": "A bot version PR that changes download/checksums.json (L1) needs a Risk paths section in its body before the owner reports it: matched path and rule, scope, upstream release and advisories, checksum evidence, and CI at the head; the bot's own body explains only the automation",
+  "evidence": "frostyard/bootc-debian#37, cross-review of head eef91e5: medium blocking, the PR body did not say why the L1 change was safe",
+  "promoted_to": "AGENTS.md"
+}
