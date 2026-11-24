@@ -119,6 +119,34 @@ on `PATH` (row B2 of core's baseline spec). CI runs `make ci` in
   commit message give the reason in this repository's terms and link the ADR,
   the spec or the issue that applies. Who decided and when stays off the PR.
 
+## Releases and dependencies
+
+- Tag format: `bootc-<bootc version>-ostree-<ostree version>-<UTC minute>`,
+  for example `bootc-1.17.4-ostree-2026.7-202611180102`.
+  [`lib/check-release.sh`](lib/check-release.sh) computes it.
+- How a release starts: a person runs the `Build` workflow
+  ([`build.yml`](.github/workflows/build.yml)) by `workflow_dispatch` on
+  `main`. Its `Release` job creates the GitHub release and the tag, and its
+  `Request APT publication` job sends `publish-deb` to frostyard/apt-publisher
+  ([docs/runbooks/release.md](docs/runbooks/release.md)).
+- Who tags: Brian. Agents never tag, push tags, release, or start that run.
+- Version rule: the repository has no version of its own. The tag and the
+  package versions follow the upstream pins in
+  [`download/checksums.json`](download/checksums.json) and the build stamp. A
+  release is due when `main` changes what the packages hold since the latest
+  release tag: a pin in `download/checksums.json`, or `build.sh` (the build
+  steps, a `Depends` list, `RUST_VERSION`). A change to CI, tests or docs
+  alone needs no release.
+- Internal dependencies: frostyard/core's reusable workflow
+  `.github/workflows/pr-triage.yml`, pinned to a commit in
+  [`risk-paths.yml`](.github/workflows/risk-paths.yml) and
+  [`pr-triage-dispatch.yml`](.github/workflows/pr-triage-dispatch.yml); and
+  frostyard/apt-publisher, which the release reaches by the `publish-deb`
+  dispatch (not pinned).
+- Who uses this repository: frostyard/snosi images install `bootc` and
+  `libostree-1-1` from the Frostyard APT repository; apt-publisher starts an
+  image build after each publication (core ADR-0056).
+
 ## Documentation
 
 `docs/README.md` is the index. A decision about this repository gets an ADR in
