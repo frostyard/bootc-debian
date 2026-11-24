@@ -99,7 +99,7 @@ on `PATH` (row B2 of core's baseline spec). CI runs `make ci` in
   CI at the head (Lint, both codename builds and `ci`, read from the head
   commit's check runs, because the dispatched runs do not show in the PR's
   checks). No test can read a PR body before review, so this rule is the
-  guard ([`.memory/corrections/2026-11-24-pr-37-version-pr-risk-section.json`](.memory/corrections/2026-11-22-pr-37-version-pr-risk-section.json)).
+  guard ([`.memory/corrections/2026-11-24-pr-37-version-pr-risk-section.json`](.memory/corrections/2026-11-24-pr-37-version-pr-risk-section.json)).
 - **On a bootc bump, check `RUST_VERSION` in [`build.sh`](build.sh).** A new
   bootc release can need a newer rustc to build, even when its own minimum
   supported Rust version does not change.
